@@ -50,8 +50,8 @@ struct ColorPreset {
 };
 
 static const ColorPreset COLOR_PRESETS[] = {
-	{"Color.Cyan", "#4DE8FF"},  {"Color.Amber", "#FFB454"}, {"Color.Purple", "#9B6BFF"},
-	{"Color.Red", "#FF5C7A"},   {"Color.Green", "#5CE08A"}, {"Color.Blue", "#4D8DFF"},
+	{"Color.Cyan", "#4DE8FF"}, {"Color.Amber", "#FFB454"}, {"Color.Purple", "#9B6BFF"},
+	{"Color.Red", "#FF5C7A"},  {"Color.Green", "#5CE08A"}, {"Color.Blue", "#4D8DFF"},
 };
 
 static QString T(const char *key)
@@ -336,7 +336,8 @@ void SceneTreeDock::build(QTreeWidgetItem *parent, obs_data_array_t *array, cons
 
 		if (type == QLatin1String("folder")) {
 			obs_data_set_default_bool(entry, "expanded", true);
-			QTreeWidgetItem *folder = makeFolder(name, QString::fromUtf8(obs_data_get_string(entry, "color")),
+			QTreeWidgetItem *folder = makeFolder(name,
+							     QString::fromUtf8(obs_data_get_string(entry, "color")),
 							     obs_data_get_bool(entry, "expanded"));
 			parent->addChild(folder);
 			obs_data_array_t *children = obs_data_get_array(entry, "children");
@@ -351,7 +352,8 @@ void SceneTreeDock::build(QTreeWidgetItem *parent, obs_data_array_t *array, cons
 				uuid = byName.value(name);
 			if (!uuid.isEmpty() && byUuid.contains(uuid) && !seen.contains(uuid)) {
 				seen.insert(uuid);
-				parent->addChild(makeScene(uuid, byUuid.value(uuid), obs_data_get_bool(entry, "favorite")));
+				parent->addChild(
+					makeScene(uuid, byUuid.value(uuid), obs_data_get_bool(entry, "favorite")));
 			}
 		}
 
@@ -650,9 +652,9 @@ void SceneTreeDock::newFolderAtRoot()
 void SceneTreeDock::createFolder(QTreeWidgetItem *reference)
 {
 	bool ok = false;
-	const QString name =
-		QInputDialog::getText(this, T("Folder.New"), T("Folder.NamePrompt"), QLineEdit::Normal, T("Folder.DefaultName"), &ok)
-			.trimmed();
+	const QString name = QInputDialog::getText(this, T("Folder.New"), T("Folder.NamePrompt"), QLineEdit::Normal,
+						   T("Folder.DefaultName"), &ok)
+				     .trimmed();
 	if (!ok || name.isEmpty())
 		return;
 
