@@ -21,6 +21,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <obs.h>
 #include <obs-frontend-api.h>
 
+#include <QElapsedTimer>
 #include <QHash>
 #include <QList>
 #include <QPair>
@@ -96,7 +97,12 @@ private:
 	QTreeWidgetItem *makeScene(const QString &uuid, const QString &name, bool favorite);
 	void refreshItem(QTreeWidgetItem *item);
 
-	void createFolder(QTreeWidgetItem *reference);
+	QTreeWidgetItem *createFolder(QTreeWidgetItem *reference);
+	QList<QTreeWidgetItem *> topLevelSelection(QTreeWidgetItem *fallback) const;
+	void moveItems(const QList<QTreeWidgetItem *> &items, QTreeWidgetItem *target);
+	void collectFolders(QTreeWidgetItem *parent, const QString &prefix,
+			    QList<QPair<QString, QTreeWidgetItem *>> &out) const;
+	int updateFolderBadge(QTreeWidgetItem *folder, const QString &programUuid, bool &containsLive);
 	void renameFolder(QTreeWidgetItem *folder);
 	void deleteFolder(QTreeWidgetItem *folder);
 	void setFolderColor(QTreeWidgetItem *folder, const QString &color);
@@ -120,6 +126,10 @@ private:
 	QToolButton *favButton = nullptr;
 	QToolButton *addButton = nullptr;
 	QTimer *saveTimer = nullptr;
+	QWidget *hint = nullptr; /* first-run help, shown while there are no folders */
+
+	QTreeWidgetItem *lastToggled = nullptr; /* only compared, never dereferenced */
+	QElapsedTimer toggleTimer;
 
 	obs_data_t *pending = nullptr; /* saved layout waiting for scenes to exist */
 	bool hasPending = false;

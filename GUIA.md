@@ -2,7 +2,7 @@
 
 Plugin para OBS Studio que agrega un panel para organizar las escenas en carpetas, con búsqueda, colores y favoritas.
 
-> **Estado: v0.1.0.** Compila sin errores ni advertencias en macOS (universal), Windows x64 y Ubuntu mediante GitHub Actions. Falta la prueba dentro de OBS (paso 6).
+> **Estado: v0.2.0.** Compila en macOS (universal), Windows x64 y Ubuntu mediante GitHub Actions. Falta la prueba dentro de OBS (paso 6).
 
 ## 1. Qué hace
 
@@ -12,7 +12,10 @@ Plugin para OBS Studio que agrega un panel para organizar las escenas en carpeta
 - **Favoritas**: marca escenas con ★ y usa el botón ★ para ver solo esas.
 - **Colores por carpeta**: cian, ámbar, morado, rojo, verde y azul.
 - **Modo Estudio**: un clic manda la escena a vista previa, doble clic a programa.
-- La escena en vivo aparece en **negrita**.
+- **Indicador de en vivo**: punto rojo y fila resaltada en la escena al aire; punto hueco para la vista previa del Modo Estudio.
+- Cada carpeta muestra **cuántas escenas tiene** y el punto rojo si contiene la escena en vivo, aunque esté cerrada.
+- **Selección múltiple** con Ctrl/Cmd o Shift + clic, para arrastrar varias a la vez o usar clic derecho → **Mover a**.
+- **Ayuda inicial** con botón para crear la primera carpeta.
 - **La estructura se guarda dentro de la colección de escenas**: viaja al exportar, importar o duplicar la colección, y cada colección tiene su propio árbol.
 - Las escenas se identifican por su ID interno, así que renombrarlas no las saca de su carpeta.
 - Interfaz en español e inglés.
@@ -58,7 +61,7 @@ Reinicia OBS y activa el panel en **Paneles → Carpetas de escenas** (Docks →
 
 1. Al abrirlo por primera vez verás todas tus escenas en la raíz.
 2. Botón **+** o clic derecho → **Nueva carpeta**.
-3. Arrastra escenas (o carpetas) dentro de una carpeta.
+3. Arrastra escenas (o carpetas) dentro de una carpeta. Para mover varias: Ctrl/Cmd + clic para seleccionarlas, luego arrástralas o clic derecho → **Mover a**.
 4. Clic derecho en una carpeta: renombrar, cambiar color, crear subcarpeta o eliminarla. Eliminar una carpeta **no borra escenas**: su contenido sube un nivel.
 5. Clic derecho en una escena: agregar o quitar de favoritas.
 6. Las escenas nuevas que crees en OBS aparecen al final de la raíz.
@@ -76,6 +79,9 @@ Crear, borrar y renombrar escenas se sigue haciendo en el panel normal de Escena
 - [ ] Renombrar y borrar escenas desde OBS: el panel se actualiza.
 - [ ] Modo Estudio: clic = vista previa, doble clic = programa.
 - [ ] Panel acoplado a la izquierda y en pestaña junto a otro panel: no queda en blanco al reabrir.
+- [ ] Selección múltiple: arrastrar varias y "Mover a" (carpeta existente, nivel principal, carpeta nueva).
+- [ ] Punto rojo en la escena en vivo y en su carpeta cerrada; contador de escenas correcto.
+- [ ] Doble clic en una carpeta no parpadea.
 - [ ] Búsqueda y filtro de favoritas; al limpiar, las carpetas vuelven a su estado.
 
 ## 7. Cómo está hecho

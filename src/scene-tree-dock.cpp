@@ -22,6 +22,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <plugin-support.h>
 
 #include <QAction>
+#include <QApplication>
 #include <QColor>
 #include <QDropEvent>
 #include <QFont>
@@ -29,12 +30,14 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <QHeaderView>
 #include <QIcon>
 #include <QInputDialog>
+#include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
 #include <QMetaObject>
 #include <QPainter>
 #include <QPalette>
 #include <QPixmap>
+#include <QPushButton>
 #include <QSignalBlocker>
 #include <QTimer>
 #include <QToolButton>
@@ -88,6 +91,17 @@ static void source_renamed(void *data, calldata_t *)
 
 void SceneTreeWidget::dropEvent(QDropEvent *event)
 {
+	/* A folder carries its content: don't move a child apart from its selected parent. */
+	const QList<QTreeWidgetItem *> selection = selectedItems();
+	for (QTreeWidgetItem *item : selection) {
+		for (QTreeWidgetItem *ancestor = item->parent(); ancestor; ancestor = ancestor->parent()) {
+			if (ancestor->isSelected()) {
+				item->setSelected(false);
+				break;
+			}
+		}
+	}
+
 	QTreeWidget::dropEvent(event);
 	emit itemsMoved();
 }
@@ -117,12 +131,16 @@ SceneTreeDock::SceneTreeDock(QWidget *parent) : QWidget(parent)
 	bar->addWidget(addButton);
 
 	tree = new SceneTreeWidget(this);
-	tree->setColumnCount(1);
+	tree->setColumnCount(2); /* 0 = name, 1 = badge (live dot, scene count) */
 	tree->setHeaderHidden(true);
 	tree->setIndentation(16);
 	tree->setUniformRowHeights(true);
 	tree->setExpandsOnDoubleClick(false);
-	tree->setSelectionMode(QAbstractItemView::SingleSelection);
+	tree->setSelectionMode(QAbstractItemView::ExtendedSelection);
+	tree->header()->setStretchLastSection(false);
+	tree->header()->setSectionResizeMode(0, QHeaderView::Stretch);
+	tree->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+	tree->header()->setMinimumSectionSize(8);
 	tree->setDragEnabled(true);
 	tree->setAcceptDrops(true);
 	tree->setDropIndicatorShown(true);
@@ -134,6 +152,19 @@ SceneTreeDock::SceneTreeDock(QWidget *parent) : QWidget(parent)
 	mainLayout->setContentsMargins(4, 4, 4, 4);
 	mainLayout->setSpacing(4);
 	mainLayout->addLayout(bar);
+
+	hint = new QWidget(this);
+	auto *hintLabel = new QLabel(T("Hint.Text"), hint);
+	hintLabel->setWordWrap(true);
+	auto *hintButton = new QPushButton(T("Hint.Button"), hint);
+	auto *hintLayout = new QVBoxLayout(hint);
+	hintLayout->setContentsMargins(4, 4, 4, 4);
+	hintLayout->setSpacing(6);
+	hintLayout->addWidget(hintLabel);
+	hintLayout->addWidget(hintButton);
+	hint->setVisible(false);
+	mainLayout->addWidget(hint);
+	connect(hintButton, &QPushButton::clicked, this, &SceneTreeDock::newFolderAtRoot);
 	mainLayout->addWidget(tree, 1);
 
 	saveTimer = new QTimer(this);
@@ -212,6 +243,7 @@ QTreeWidgetItem *SceneTreeDock::makeFolder(const QString &name, const QString &c
 	item->setData(0, RoleColor, color);
 	item->setData(0, RoleExpanded, expanded);
 	item->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsDragEnabled | Qt::ItemIsDropEnabled);
+	item->setTextAlignment(1, Qt::AlignRight | Qt::AlignVCenter);
 	refreshItem(item);
 	return item;
 }
@@ -225,6 +257,7 @@ QTreeWidgetItem *SceneTreeDock::makeScene(const QString &uuid, const QString &na
 	item->setData(0, RoleFavorite, favorite);
 	/* No ItemIsDropEnabled: nothing can be dropped inside a scene. */
 	item->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsDragEnabled | Qt::ItemNeverHasChildren);
+	item->setTextAlignment(1, Qt::AlignRight | Qt::AlignVCenter);
 	refreshItem(item);
 	return item;
 }
@@ -492,6 +525,11 @@ void SceneTreeDock::updateCurrentHighlight()
 		}
 	}
 
+	const bool studio = obs_frontend_preview_program_mode_active();
+	const QColor liveColor(229, 72, 77);
+	const QBrush liveRow(QColor(229, 72, 77, 40));
+	const QColor previewColor = palette().color(QPalette::Highlight);
+
 	QSignalBlocker blocker(tree);
 	QTreeWidgetItem *selected = nullptr;
 	for (QTreeWidgetItemIterator it(tree); *it; ++it) {
@@ -499,13 +537,64 @@ void SceneTreeDock::updateCurrentHighlight()
 		if (!isScene(item))
 			continue;
 		const QString uuid = item->data(0, RoleUuid).toString();
+		const bool live = uuid == programUuid;
+		const bool preview = studio && !live && uuid == selectedUuid;
+
 		QFont font = item->font(0);
-		font.setBold(uuid == programUuid); /* bold = scene that is live */
+		font.setBold(live);
 		item->setFont(0, font);
+
+		/* Red dot + tinted row = on air; hollow dot = Studio Mode preview. */
+		item->setText(1, live ? QStringLiteral("●") : preview ? QStringLiteral("○") : QString());
+		item->setForeground(1, live ? liveColor : previewColor);
+		item->setBackground(0, live ? liveRow : QBrush());
+		item->setBackground(1, live ? liveRow : QBrush());
+		const QString tip = live ? T("Badge.Live") : preview ? T("Badge.Preview") : QString();
+		item->setToolTip(0, tip);
+		item->setToolTip(1, tip);
+
 		if (uuid == selectedUuid)
 			selected = item;
 	}
-	tree->setCurrentItem(selected);
+
+	/* Folders: scene count, plus the live dot so a closed folder never hides what is on air. */
+	int folders = 0;
+	QTreeWidgetItem *root = tree->invisibleRootItem();
+	for (int i = 0; i < root->childCount(); i++) {
+		if (isFolder(root->child(i))) {
+			bool containsLive = false;
+			updateFolderBadge(root->child(i), programUuid, containsLive);
+			folders++;
+		}
+	}
+	hint->setVisible(folders == 0);
+
+	/* Keep a multi-selection the user is building. */
+	if (tree->selectedItems().size() <= 1)
+		tree->setCurrentItem(selected);
+}
+
+int SceneTreeDock::updateFolderBadge(QTreeWidgetItem *folder, const QString &programUuid, bool &containsLive)
+{
+	int count = 0;
+	for (int i = 0; i < folder->childCount(); i++) {
+		QTreeWidgetItem *child = folder->child(i);
+		if (isFolder(child)) {
+			bool childLive = false;
+			count += updateFolderBadge(child, programUuid, childLive);
+			containsLive = containsLive || childLive;
+		} else {
+			count++;
+			if (child->data(0, RoleUuid).toString() == programUuid)
+				containsLive = true;
+		}
+	}
+
+	const QString number = QString::number(count);
+	folder->setText(1, containsLive ? QStringLiteral("● ") + number : number);
+	folder->setForeground(1, containsLive ? QColor(229, 72, 77) : palette().color(QPalette::PlaceholderText));
+	folder->setToolTip(1, containsLive ? T("Badge.Live") : QString());
+	return count;
 }
 
 void SceneTreeDock::activateScene(QTreeWidgetItem *item, bool forceProgram)
@@ -530,10 +619,21 @@ void SceneTreeDock::activateScene(QTreeWidgetItem *item, bool forceProgram)
 
 void SceneTreeDock::onItemClicked(QTreeWidgetItem *item, int)
 {
-	if (isFolder(item))
-		item->setExpanded(!item->isExpanded()); /* whole row toggles, not only the arrow */
-	else
+	/* Ctrl/Cmd/Shift + click builds a selection; it must not switch scenes. */
+	if (QApplication::keyboardModifiers() & (Qt::ControlModifier | Qt::ShiftModifier | Qt::MetaModifier))
+		return;
+
+	if (isFolder(item)) {
+		/* The whole row toggles. Ignore the second click of a double click so it doesn't flicker. */
+		if (item == lastToggled && toggleTimer.isValid() &&
+		    toggleTimer.elapsed() < QApplication::doubleClickInterval())
+			return;
+		item->setExpanded(!item->isExpanded());
+		lastToggled = item;
+		toggleTimer.restart();
+	} else {
 		activateScene(item, false);
+	}
 }
 
 void SceneTreeDock::onItemDoubleClicked(QTreeWidgetItem *item, int)
@@ -649,14 +749,14 @@ void SceneTreeDock::newFolderAtRoot()
 	createFolder(nullptr);
 }
 
-void SceneTreeDock::createFolder(QTreeWidgetItem *reference)
+QTreeWidgetItem *SceneTreeDock::createFolder(QTreeWidgetItem *reference)
 {
 	bool ok = false;
 	const QString name = QInputDialog::getText(this, T("Folder.New"), T("Folder.NamePrompt"), QLineEdit::Normal,
 						   T("Folder.DefaultName"), &ok)
 				     .trimmed();
 	if (!ok || name.isEmpty())
-		return;
+		return nullptr;
 
 	QTreeWidgetItem *folder = makeFolder(name, QString(), true);
 	if (isFolder(reference)) {
@@ -673,7 +773,75 @@ void SceneTreeDock::createFolder(QTreeWidgetItem *reference)
 
 	if (!filterActive())
 		restoreExpanded();
+	updateCurrentHighlight();
 	markDirty();
+	return folder;
+}
+
+QList<QTreeWidgetItem *> SceneTreeDock::topLevelSelection(QTreeWidgetItem *fallback) const
+{
+	QList<QTreeWidgetItem *> selection = tree->selectedItems();
+	if (fallback && !selection.contains(fallback))
+		selection = {fallback};
+
+	QList<QTreeWidgetItem *> result;
+	for (QTreeWidgetItem *item : selection) {
+		bool nested = false;
+		for (QTreeWidgetItem *ancestor = item->parent(); ancestor; ancestor = ancestor->parent()) {
+			if (selection.contains(ancestor)) {
+				nested = true;
+				break;
+			}
+		}
+		if (!nested)
+			result.append(item);
+	}
+	return result;
+}
+
+void SceneTreeDock::moveItems(const QList<QTreeWidgetItem *> &items, QTreeWidgetItem *target)
+{
+	updating = true;
+	for (QTreeWidgetItem *item : items) {
+		/* A folder can't be moved into itself or into its own content. */
+		bool invalid = false;
+		for (QTreeWidgetItem *ancestor = target; ancestor; ancestor = ancestor->parent()) {
+			if (ancestor == item) {
+				invalid = true;
+				break;
+			}
+		}
+		if (invalid)
+			continue;
+
+		if (QTreeWidgetItem *parent = item->parent())
+			parent->removeChild(item);
+		else
+			tree->takeTopLevelItem(tree->indexOfTopLevelItem(item));
+
+		if (target)
+			target->addChild(item);
+		else
+			tree->addTopLevelItem(item);
+	}
+	if (target)
+		target->setData(0, RoleExpanded, true);
+	updating = false;
+
+	onItemsMoved();
+}
+
+void SceneTreeDock::collectFolders(QTreeWidgetItem *parent, const QString &prefix,
+				   QList<QPair<QString, QTreeWidgetItem *>> &out) const
+{
+	for (int i = 0; i < parent->childCount(); i++) {
+		QTreeWidgetItem *child = parent->child(i);
+		if (!isFolder(child))
+			continue;
+		const QString path = prefix + child->data(0, RoleName).toString();
+		out.append(qMakePair(path, child));
+		collectFolders(child, path + QStringLiteral(" / "), out);
+	}
 }
 
 void SceneTreeDock::renameFolder(QTreeWidgetItem *folder)
@@ -735,6 +903,30 @@ void SceneTreeDock::onContextMenu(const QPoint &pos)
 		const bool favorite = item->data(0, RoleFavorite).toBool();
 		QAction *fav = menu.addAction(favorite ? T("Favorites.Remove") : T("Favorites.Add"));
 		connect(fav, &QAction::triggered, this, [this, item]() { toggleFavorite(item); });
+		menu.addSeparator();
+	}
+
+	const QList<QTreeWidgetItem *> moving = topLevelSelection(item);
+	if (!moving.isEmpty()) {
+		QMenu *moveMenu = menu.addMenu(moving.size() > 1 ? T("Move.Many").arg(moving.size()) : T("Move.One"));
+		QList<QPair<QString, QTreeWidgetItem *>> folders;
+		collectFolders(tree->invisibleRootItem(), QString(), folders);
+		for (const auto &entry : folders) {
+			QTreeWidgetItem *target = entry.second;
+			QAction *action = moveMenu->addAction(folderIcon(this, target->data(0, RoleColor).toString()),
+							      entry.first);
+			connect(action, &QAction::triggered, this,
+				[this, moving, target]() { moveItems(moving, target); });
+		}
+		if (!folders.isEmpty())
+			moveMenu->addSeparator();
+		QAction *toRoot = moveMenu->addAction(T("Move.Root"));
+		connect(toRoot, &QAction::triggered, this, [this, moving]() { moveItems(moving, nullptr); });
+		QAction *toNew = moveMenu->addAction(T("Move.NewFolder"));
+		connect(toNew, &QAction::triggered, this, [this, moving]() {
+			if (QTreeWidgetItem *folder = createFolder(nullptr))
+				moveItems(moving, folder);
+		});
 		menu.addSeparator();
 	}
 
