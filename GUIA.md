@@ -68,7 +68,7 @@ Reinicia OBS. El panel aparece solo la primera vez; después se controla en **Pa
 
 1. Sube el número en `buildspec.json` (`"version"`) y haz push a `main`.
 2. En GitHub: Releases → Create a new release → etiqueta **con el mismo número** → Create new tag on publish → Publish.
-3. La compilación adjunta los archivos a la release.
+3. La compilación adjunta los archivos a la release: en macOS el plugin suelto comprimido (`.zip` con `ac-scene-folders.plugin`) y en Windows el `.zip` con las carpetas del plugin. No se generan instaladores.
 
 Si la etiqueta y `buildspec.json` no coinciden, el plugin informa una versión distinta a la de la release y el aviso de actualización falla.
 
