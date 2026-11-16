@@ -23,7 +23,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 
 #include <QHash>
 #include <QList>
-#include <QListWidget>
+#include <QTreeWidget>
 #include <QPair>
 #include <QString>
 #include <QStringList>
@@ -38,12 +38,13 @@ class QTabBar;
 class QTimer;
 class QToolButton;
 
-/* List that reports when the user finishes a drag & drop reorder. */
-class SceneListWidget : public QListWidget {
+/* Scene tree (one level of folders) that reports when a drag & drop finishes
+ * and refuses to put a folder inside another folder. */
+class SceneTreeWidget : public QTreeWidget {
 	Q_OBJECT
 
 public:
-	explicit SceneListWidget(QWidget *parent = nullptr) : QListWidget(parent) {}
+	explicit SceneTreeWidget(QWidget *parent = nullptr) : QTreeWidget(parent) {}
 
 signals:
 	void orderChanged();
@@ -69,13 +70,29 @@ public slots:
 	void reconcile();
 
 private:
+	/* A top-level entry of a group: a scene, or a folder holding scenes. */
+	struct Node {
+		bool folder = false;
+		QString id; /* scene UUID, or folder id */
+		QString name;
+		QString color;
+		bool expanded = true;
+		QStringList children; /* folder only: scene UUIDs */
+	};
+
 	struct Group {
 		QString id;
 		QString name;
 		QString color;
-		QString profile;    /* linked OBS profile, empty = none */
-		QStringList scenes; /* scene UUIDs, in the group's own order */
+		QString profile;   /* linked OBS profile, empty = none */
+		QList<Node> items; /* the group's own order */
 	};
+
+	static QStringList members(const Group &group);
+	static bool hasScene(const Group &group, const QString &uuid);
+	static void removeScene(Group &group, const QString &uuid);
+	static void addScene(Group &group, const QString &uuid, const QString &folderId = QString());
+	static Node *findFolder(Group &group, const QString &folderId);
 
 	using SceneList = QList<QPair<QString, QString>>; /* uuid, name */
 
@@ -96,9 +113,10 @@ private:
 
 	void onTabChanged(int index);
 	void applyLinkedProfile(const Group &group);
-	void onItemClicked(QListWidgetItem *item);
-	void onItemDoubleClicked(QListWidgetItem *item);
-	void onItemChanged(QListWidgetItem *item);
+	void onItemClicked(QTreeWidgetItem *item);
+	void onItemDoubleClicked(QTreeWidgetItem *item);
+	void onItemChanged(QTreeWidgetItem *item);
+	void onFolderToggled(QTreeWidgetItem *item, bool expanded);
 	void onOrderChanged();
 	void onContextMenu(const QPoint &pos);
 	void activateScene(const QString &uuid, bool forceProgram);
@@ -108,7 +126,12 @@ private:
 	void editCurrentGroup();
 	void setMembership(const QStringList &uuids, const QString &groupId, bool member);
 
-	void beginNewScene();
+	void newFolder(const QStringList &scenesToMove = QStringList());
+	void setFolderColor(const QString &folderId, const QString &color);
+	void deleteFolder(const QString &folderId);
+	void moveToFolder(const QStringList &uuids, const QString &folderId);
+
+	void beginNewScene(const QString &folderId = QString());
 	void commitNewScene();
 	void cancelNewScene();
 	void duplicateScene(const QString &uuid);
@@ -130,7 +153,8 @@ private:
 	QLabel *subLabel = nullptr;
 	QToolButton *gearButton = nullptr;
 	QLineEdit *searchEdit = nullptr;
-	SceneListWidget *list = nullptr;
+	SceneTreeWidget *list = nullptr;
+	QToolButton *newFolderButton = nullptr;
 	QLineEdit *newSceneEdit = nullptr;
 	QLabel *newSceneHint = nullptr;
 	QLabel *studioHint = nullptr;
@@ -140,7 +164,9 @@ private:
 
 	QList<Group> groups;
 	QString activeGroupId; /* empty = "All" */
-	QString profileNote;   /* shown when a linked profile could not be applied */
+	QString profileNote;
+	QString newSceneFolderId;
+		/* folder that "New scene here" targets */ /* shown when a linked profile could not be applied */
 
 	obs_data_t *pending = nullptr; /* saved layout waiting for scenes to exist */
 	bool hasPending = false;

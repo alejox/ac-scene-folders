@@ -55,6 +55,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <QStyledItemDelegate>
 #include <QTabBar>
 #include <QTimer>
+#include <QTreeWidgetItemIterator>
 #include <QToolButton>
 #include <QUrl>
 #include <QUuid>
@@ -62,10 +63,13 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 
 static const char *SAVE_KEY = "ac-scene-groups";
 static const char *LEGACY_KEY = "ac-scene-folders"; /* v0.1/v0.2 folder tree */
-static const int SAVE_VERSION = 2;
+static const int SAVE_VERSION = 3;
 
 enum ItemRoles {
-	RoleUuid = Qt::UserRole,
+	RoleUuid = Qt::UserRole, /* scene UUID, or folder id */
+	RoleFolder,              /* true on folder rows */
+	RoleFolderColor,
+	RoleCount,
 	RoleLive,
 	RolePreview,
 	RoleShared,
@@ -107,6 +111,23 @@ static QIcon dotIcon(const QString &color)
 	return QIcon(pixmap);
 }
 
+static QIcon folderIcon(const QString &color, const QColor &fallback)
+{
+	QColor fill(color);
+	if (!fill.isValid())
+		fill = fallback;
+	QPixmap pixmap(32, 32);
+	pixmap.fill(Qt::transparent);
+	QPainter painter(&pixmap);
+	painter.setRenderHint(QPainter::Antialiasing);
+	painter.setPen(Qt::NoPen);
+	painter.setBrush(fill);
+	painter.drawRoundedRect(3, 6, 12, 6, 2, 2);
+	painter.drawRoundedRect(3, 9, 26, 18, 4, 4);
+	painter.end();
+	return QIcon(pixmap);
+}
+
 static void source_renamed(void *data, calldata_t *)
 {
 	auto *dock = static_cast<SceneGroupsDock *>(data);
@@ -134,6 +155,11 @@ public:
 
 	void paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const override
 	{
+		if (index.data(RoleFolder).toBool()) {
+			paintFolder(painter, option, index);
+			return;
+		}
+
 		QStyleOptionViewItem opt = option;
 		initStyleOption(&opt, index);
 		const QString name = opt.text;
@@ -211,13 +237,86 @@ public:
 
 		painter->restore();
 	}
+
+	/* Folder row: colored folder, name, live dot when closed over the live scene, scene count. */
+	void paintFolder(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const
+	{
+		QStyleOptionViewItem opt = option;
+		initStyleOption(&opt, index);
+		const QString name = opt.text;
+		opt.text.clear();
+		opt.icon = QIcon();
+		QStyle *style = opt.widget ? opt.widget->style() : QApplication::style();
+		style->drawControl(QStyle::CE_ItemViewItem, &opt, painter, opt.widget);
+
+		painter->save();
+		painter->setRenderHint(QPainter::Antialiasing);
+		const QRect row = option.rect.adjusted(3, 2, -3, -2);
+		const bool selected = opt.state.testFlag(QStyle::State_Selected);
+		const QColor textColor = opt.palette.color(selected ? QPalette::HighlightedText : QPalette::Text);
+		QColor muted = textColor;
+		muted.setAlpha(150);
+
+		const int iconSize = 16;
+		const QRect iconRect(row.left() + 4, row.center().y() - iconSize / 2, iconSize, iconSize);
+		folderIcon(index.data(RoleFolderColor).toString(), muted).paint(painter, iconRect);
+
+		QFont small = opt.font;
+		if (small.pointSizeF() > 0)
+			small.setPointSizeF(small.pointSizeF() * 0.85);
+		int right = row.right() - 6;
+		const QString count = QString::number(index.data(RoleCount).toInt());
+		const QFontMetrics smallMetrics(small);
+		const int countWidth = smallMetrics.horizontalAdvance(count);
+		painter->setFont(small);
+		painter->setPen(muted);
+		painter->drawText(QRect(right - countWidth, row.top(), countWidth, row.height()),
+				  Qt::AlignVCenter | Qt::AlignRight, count);
+		right -= countWidth + 8;
+
+		const bool open = opt.state.testFlag(QStyle::State_Open);
+		if (index.data(RoleLive).toBool() && !open) {
+			painter->setPen(Qt::NoPen);
+			painter->setBrush(LIVE_COLOR);
+			painter->drawEllipse(QPoint(right - 4, row.center().y()), 4, 4);
+			right -= 14;
+		}
+
+		QFont nameFont = opt.font;
+		nameFont.setBold(true);
+		const QRect textRect(iconRect.right() + 8, row.top(), qMax(0, right - iconRect.right() - 8),
+				     row.height());
+		painter->setFont(nameFont);
+		painter->setPen(textColor);
+		painter->drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft,
+				  QFontMetrics(nameFont).elidedText(name, Qt::ElideRight, textRect.width()));
+		painter->restore();
+	}
 };
 
 /* ------------------------------------------------------------------------- */
 
-void SceneListWidget::dropEvent(QDropEvent *event)
+void SceneTreeWidget::dropEvent(QDropEvent *event)
 {
-	QListWidget::dropEvent(event);
+	/* Folders only live at the top level. */
+	bool movingFolder = false;
+	const QList<QTreeWidgetItem *> selection = selectedItems();
+	for (const QTreeWidgetItem *item : selection) {
+		if (item->data(0, RoleFolder).toBool())
+			movingFolder = true;
+	}
+	if (movingFolder) {
+		QTreeWidgetItem *target = itemAt(event->position().toPoint());
+		QTreeWidgetItem *parentTarget = nullptr;
+		if (target)
+			parentTarget = dropIndicatorPosition() == QAbstractItemView::OnItem ? target : target->parent();
+		if (parentTarget) {
+			event->ignore();
+			return;
+		}
+	}
+
+	QTreeWidget::dropEvent(event);
 	emit orderChanged();
 }
 
@@ -324,7 +423,12 @@ SceneGroupsDock::SceneGroupsDock(QWidget *parent) : QWidget(parent)
 	searchEdit->setVisible(false);
 
 	/* Scene list */
-	list = new SceneListWidget(this);
+	list = new SceneTreeWidget(this);
+	list->setColumnCount(1);
+	list->setHeaderHidden(true);
+	list->setIndentation(14);
+	list->setRootIsDecorated(true);
+	list->setExpandsOnDoubleClick(false);
 	auto *delegate = new SceneRowDelegate(list);
 	delegate->liveText = T("Badge.Live");
 	delegate->previewText = T("Badge.Preview");
@@ -335,7 +439,7 @@ SceneGroupsDock::SceneGroupsDock(QWidget *parent) : QWidget(parent)
 	list->setContextMenuPolicy(Qt::CustomContextMenu);
 	list->setDefaultDropAction(Qt::MoveAction);
 	list->setDropIndicatorShown(true);
-	list->setUniformItemSizes(true);
+	list->setUniformRowHeights(true);
 
 	newSceneEdit = new QLineEdit(this);
 	newSceneEdit->setPlaceholderText(T("Scene.NamePlaceholder"));
@@ -350,6 +454,10 @@ SceneGroupsDock::SceneGroupsDock(QWidget *parent) : QWidget(parent)
 
 	/* Footer */
 	newSceneButton = new QPushButton(T("Scene.New"), this);
+	newFolderButton = new QToolButton(this);
+	newFolderButton->setIcon(folderIcon(QString(), palette().color(QPalette::ButtonText)));
+	newFolderButton->setToolTip(T("Folder.New"));
+	newFolderButton->setAccessibleName(T("Folder.New"));
 	searchButton = new QToolButton(this);
 	searchButton->setText(T("Search.Button"));
 	searchButton->setCheckable(true);
@@ -359,6 +467,7 @@ SceneGroupsDock::SceneGroupsDock(QWidget *parent) : QWidget(parent)
 	footer->setContentsMargins(0, 0, 0, 0);
 	footer->setSpacing(4);
 	footer->addWidget(newSceneButton, 1);
+	footer->addWidget(newFolderButton);
 	footer->addWidget(searchButton);
 
 	auto *mainLayout = new QVBoxLayout(this);
@@ -402,15 +511,19 @@ SceneGroupsDock::SceneGroupsDock(QWidget *parent) : QWidget(parent)
 	});
 	connect(searchEdit, &QLineEdit::textChanged, this, [this]() { rebuildList(); });
 
-	connect(list, &QListWidget::itemClicked, this, [this](QListWidgetItem *item) { onItemClicked(item); });
-	connect(list, &QListWidget::itemDoubleClicked, this,
-		[this](QListWidgetItem *item) { onItemDoubleClicked(item); });
-	connect(list, &QListWidget::itemChanged, this, [this](QListWidgetItem *item) { onItemChanged(item); });
-	connect(list, &QListWidget::customContextMenuRequested, this,
+	connect(list, &QTreeWidget::itemClicked, this, [this](QTreeWidgetItem *item, int) { onItemClicked(item); });
+	connect(list, &QTreeWidget::itemDoubleClicked, this,
+		[this](QTreeWidgetItem *item, int) { onItemDoubleClicked(item); });
+	connect(list, &QTreeWidget::itemChanged, this, [this](QTreeWidgetItem *item, int) { onItemChanged(item); });
+	connect(list, &QTreeWidget::itemExpanded, this, [this](QTreeWidgetItem *item) { onFolderToggled(item, true); });
+	connect(list, &QTreeWidget::itemCollapsed, this,
+		[this](QTreeWidgetItem *item) { onFolderToggled(item, false); });
+	connect(list, &QTreeWidget::customContextMenuRequested, this,
 		[this](const QPoint &pos) { onContextMenu(pos); });
-	connect(list, &SceneListWidget::orderChanged, this, [this]() { onOrderChanged(); });
+	connect(list, &SceneTreeWidget::orderChanged, this, [this]() { onOrderChanged(); });
 
 	connect(newSceneButton, &QPushButton::clicked, this, [this]() { beginNewScene(); });
+	connect(newFolderButton, &QToolButton::clicked, this, [this]() { newFolder(); });
 	connect(newSceneEdit, &QLineEdit::returnPressed, this, [this]() { commitNewScene(); });
 
 	auto *cancelNew = new QAction(newSceneEdit);
@@ -492,11 +605,67 @@ SceneGroupsDock::Group *SceneGroupsDock::currentGroup()
 	return activeGroupId.isEmpty() ? nullptr : findGroup(activeGroupId);
 }
 
+QStringList SceneGroupsDock::members(const Group &group)
+{
+	QStringList result;
+	for (const Node &node : group.items) {
+		if (node.folder)
+			result.append(node.children);
+		else
+			result.append(node.id);
+	}
+	return result;
+}
+
+bool SceneGroupsDock::hasScene(const Group &group, const QString &uuid)
+{
+	for (const Node &node : group.items) {
+		if (node.folder ? node.children.contains(uuid) : node.id == uuid)
+			return true;
+	}
+	return false;
+}
+
+void SceneGroupsDock::removeScene(Group &group, const QString &uuid)
+{
+	for (qsizetype i = group.items.size() - 1; i >= 0; i--) {
+		Node &node = group.items[i];
+		if (node.folder)
+			node.children.removeAll(uuid);
+		else if (node.id == uuid)
+			group.items.removeAt(i);
+	}
+}
+
+void SceneGroupsDock::addScene(Group &group, const QString &uuid, const QString &folderId)
+{
+	if (hasScene(group, uuid))
+		return;
+	if (Node *folder = findFolder(group, folderId)) {
+		folder->children.append(uuid);
+		return;
+	}
+	Node node;
+	node.id = uuid;
+	group.items.append(node);
+}
+
+SceneGroupsDock::Node *SceneGroupsDock::findFolder(Group &group, const QString &folderId)
+{
+	if (folderId.isEmpty())
+		return nullptr;
+	for (Node &node : group.items) {
+		if (node.folder && node.id == folderId)
+			return &node;
+	}
+	return nullptr;
+}
+
 int SceneGroupsDock::sharedCount(const QString &uuid) const
 {
 	int count = 0;
 	for (const Group &group : groups) {
-		if (group.scenes.contains(uuid))
+		if (hasScene(group, uuid))
 			count++;
 	}
 	return count;
@@ -505,9 +674,11 @@ int SceneGroupsDock::sharedCount(const QString &uuid) const
 QStringList SceneGroupsDock::selectedUuids() const
 {
 	QStringList result;
-	const QList<QListWidgetItem *> selection = list->selectedItems();
-	for (const QListWidgetItem *item : selection)
-		result.append(item->data(RoleUuid).toString());
+	const QList<QTreeWidgetItem *> selection = list->selectedItems();
+	for (const QTreeWidgetItem *item : selection) {
+		if (!item->data(0, RoleFolder).toBool())
+			result.append(item->data(0, RoleUuid).toString());
+	}
 	return result;
 }
 
@@ -545,20 +716,43 @@ void SceneGroupsDock::saveTo(obs_data_t *save_data)
 		obs_data_set_string(entry, "color", group.color.toUtf8().constData());
 		obs_data_set_string(entry, "profile", group.profile.toUtf8().constData());
 
-		obs_data_array_t *sceneArray = obs_data_array_create();
-		for (const QString &uuid : group.scenes) {
+		/* The name lets an imported collection (new UUIDs) find its scenes again. */
+		const auto sceneEntry = [](const QString &uuid) {
 			obs_data_t *scene = obs_data_create();
+			obs_data_set_string(scene, "type", "scene");
 			obs_data_set_string(scene, "uuid", uuid.toUtf8().constData());
-			/* The name lets an imported collection (new UUIDs) find its scenes again. */
 			if (obs_source_t *source = obs_get_source_by_uuid(uuid.toUtf8().constData())) {
 				obs_data_set_string(scene, "name", obs_source_get_name(source));
 				obs_source_release(source);
 			}
-			obs_data_array_push_back(sceneArray, scene);
-			obs_data_release(scene);
+			return scene;
+		};
+		obs_data_array_t *itemArray = obs_data_array_create();
+		for (const Node &node : group.items) {
+			obs_data_t *item = nullptr;
+			if (node.folder) {
+				item = obs_data_create();
+				obs_data_set_string(item, "type", "folder");
+				obs_data_set_string(item, "id", node.id.toUtf8().constData());
+				obs_data_set_string(item, "name", node.name.toUtf8().constData());
+				obs_data_set_string(item, "color", node.color.toUtf8().constData());
+				obs_data_set_bool(item, "expanded", node.expanded);
+				obs_data_array_t *children = obs_data_array_create();
+				for (const QString &uuid : node.children) {
+					obs_data_t *child = sceneEntry(uuid);
+					obs_data_array_push_back(children, child);
+					obs_data_release(child);
+				}
+				obs_data_set_array(item, "children", children);
+				obs_data_array_release(children);
+			} else {
+				item = sceneEntry(node.id);
+			}
+			obs_data_array_push_back(itemArray, item);
+			obs_data_release(item);
 		}
-		obs_data_set_array(entry, "scenes", sceneArray);
-		obs_data_array_release(sceneArray);
+		obs_data_set_array(entry, "items", itemArray);
+		obs_data_array_release(itemArray);
 
 		obs_data_array_push_back(groupArray, entry);
 		obs_data_release(entry);
@@ -686,16 +880,62 @@ bool SceneGroupsDock::tryApplyPending()
 				group.color = QString::fromUtf8(obs_data_get_string(entry, "color"));
 				group.profile = QString::fromUtf8(obs_data_get_string(entry, "profile"));
 
-				if (obs_data_array_t *sceneArray = obs_data_get_array(entry, "scenes")) {
+				const auto resolve = [&](obs_data_t *scene) {
+					QString uuid = QString::fromUtf8(obs_data_get_string(scene, "uuid"));
+					if (!known.contains(uuid))
+						uuid = byName.value(
+							QString::fromUtf8(obs_data_get_string(scene, "name")));
+					return uuid;
+				};
+				if (obs_data_array_t *itemArray = obs_data_get_array(entry, "items")) {
+					const size_t itemCount = obs_data_array_count(itemArray);
+					for (size_t j = 0; j < itemCount; j++) {
+						obs_data_t *item = obs_data_array_item(itemArray, j);
+						if (QString::fromUtf8(obs_data_get_string(item, "type")) ==
+						    QLatin1String("folder")) {
+							obs_data_set_default_bool(item, "expanded", true);
+							Node folder;
+							folder.folder = true;
+							folder.id = QString::fromUtf8(obs_data_get_string(item, "id"));
+							if (folder.id.isEmpty())
+								folder.id = QUuid::createUuid().toString(
+									QUuid::WithoutBraces);
+							folder.name =
+								QString::fromUtf8(obs_data_get_string(item, "name"));
+							folder.color =
+								QString::fromUtf8(obs_data_get_string(item, "color"));
+							folder.expanded = obs_data_get_bool(item, "expanded");
+							group.items.append(folder);
+							if (obs_data_array_t *children =
+								    obs_data_get_array(item, "children")) {
+								const size_t childCount =
+									obs_data_array_count(children);
+								for (size_t k = 0; k < childCount; k++) {
+									obs_data_t *child =
+										obs_data_array_item(children, k);
+									const QString uuid = resolve(child);
+									if (!uuid.isEmpty())
+										addScene(group, uuid, folder.id);
+									obs_data_release(child);
+								}
+								obs_data_array_release(children);
+							}
+						} else {
+							const QString uuid = resolve(item);
+							if (!uuid.isEmpty())
+								addScene(group, uuid);
+						}
+						obs_data_release(item);
+					}
+					obs_data_array_release(itemArray);
+				} else if (obs_data_array_t *sceneArray = obs_data_get_array(entry, "scenes")) {
+					/* v0.3.0 layout: a flat list of scenes. */
 					const size_t sceneCount = obs_data_array_count(sceneArray);
 					for (size_t j = 0; j < sceneCount; j++) {
 						obs_data_t *scene = obs_data_array_item(sceneArray, j);
-						QString uuid = QString::fromUtf8(obs_data_get_string(scene, "uuid"));
-						if (!known.contains(uuid))
-							uuid = byName.value(
-								QString::fromUtf8(obs_data_get_string(scene, "name")));
-						if (!uuid.isEmpty() && !group.scenes.contains(uuid))
-							group.scenes.append(uuid);
+						const QString uuid = resolve(scene);
+						if (!uuid.isEmpty())
+							addScene(group, uuid);
 						obs_data_release(scene);
 					}
 					obs_data_array_release(sceneArray);
@@ -730,9 +970,9 @@ void SceneGroupsDock::reconcile()
 	/* Drop scenes that no longer exist. Checked against libobs, not the UI list,
 	 * so a scene we just created isn't lost before the frontend lists it. */
 	for (Group &group : groups) {
-		for (qsizetype i = group.scenes.size() - 1; i >= 0; i--) {
-			if (!sourceAlive(group.scenes.at(i)))
-				group.scenes.removeAt(i);
+		for (const QString &uuid : members(group)) {
+			if (!sourceAlive(uuid))
+				removeScene(group, uuid);
 		}
 	}
 
@@ -867,44 +1107,87 @@ void SceneGroupsDock::rebuildList()
 	for (const auto &scene : scenes)
 		names.insert(scene.first, scene.second);
 
-	QStringList order;
-	const Group *group = currentGroup();
-	if (group) {
-		for (const QString &uuid : group->scenes) {
-			if (names.contains(uuid))
-				order.append(uuid);
-		}
-	} else {
-		for (const auto &scene : scenes)
-			order.append(scene.first);
-	}
-
 	const QString filter = searchEdit->text().trimmed();
 	const QStringList keepSelected = selectedUuids();
+	const Group *group = currentGroup();
 	const bool reorderable = group && filter.isEmpty();
-
-	updating = true;
-	list->clear();
-	for (const QString &uuid : order) {
-		const QString name = names.value(uuid);
-		if (!filter.isEmpty() && !name.contains(filter, Qt::CaseInsensitive))
-			continue;
-		auto *item = new QListWidgetItem(name);
-		item->setData(RoleUuid, uuid);
-		item->setData(RoleShared, sharedCount(uuid));
-		Qt::ItemFlags flags = Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsEditable;
+	const auto matches = [&](const QString &uuid) {
+		return names.contains(uuid) &&
+		       (filter.isEmpty() || names.value(uuid).contains(filter, Qt::CaseInsensitive));
+	};
+	const auto makeScene = [&](const QString &uuid) {
+		auto *item = new QTreeWidgetItem();
+		item->setText(0, names.value(uuid));
+		item->setData(0, RoleUuid, uuid);
+		item->setData(0, RoleShared, sharedCount(uuid));
+		Qt::ItemFlags flags = Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsEditable |
+				      Qt::ItemNeverHasChildren;
 		if (reorderable)
 			flags |= Qt::ItemIsDragEnabled;
 		item->setFlags(flags);
-		list->addItem(item);
-		if (keepSelected.size() > 1 && keepSelected.contains(uuid))
-			item->setSelected(true);
+		return item;
+	};
+
+	updating = true;
+	list->clear();
+	QList<QPair<QTreeWidgetItem *, bool>> folderStates;
+	int sceneCount = 0;
+	if (group) {
+		for (const Node &node : group->items) {
+			if (!node.folder) {
+				if (matches(node.id)) {
+					list->addTopLevelItem(makeScene(node.id));
+					sceneCount++;
+				}
+				continue;
+			}
+			int visible = 0;
+			auto *folder = new QTreeWidgetItem();
+			folder->setText(0, node.name);
+			folder->setData(0, RoleUuid, node.id);
+			folder->setData(0, RoleFolder, true);
+			folder->setData(0, RoleFolderColor, node.color);
+			Qt::ItemFlags flags = Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsEditable;
+			if (reorderable)
+				flags |= Qt::ItemIsDragEnabled | Qt::ItemIsDropEnabled;
+			folder->setFlags(flags);
+			for (const QString &uuid : node.children) {
+				if (matches(uuid)) {
+					folder->addChild(makeScene(uuid));
+					visible++;
+				}
+			}
+			folder->setData(0, RoleCount, filter.isEmpty() ? (int)node.children.size() : visible);
+			sceneCount += visible;
+			/* While searching, folders without matches are hidden and the rest open. */
+			if (filter.isEmpty() || visible > 0) {
+				list->addTopLevelItem(folder);
+				folderStates.append(qMakePair(folder, filter.isEmpty() ? node.expanded : true));
+			} else {
+				delete folder;
+			}
+		}
+	} else {
+		for (const auto &scene : scenes) {
+			if (matches(scene.first)) {
+				list->addTopLevelItem(makeScene(scene.first));
+				sceneCount++;
+			}
+		}
+	}
+	for (const auto &state : folderStates)
+		state.first->setExpanded(state.second);
+	for (QTreeWidgetItemIterator it(list); *it; ++it) {
+		if (keepSelected.size() > 1 && keepSelected.contains((*it)->data(0, RoleUuid).toString()))
+			(*it)->setSelected(true);
 	}
 	/* Reordering only makes sense inside a group; "All" follows OBS's own order. */
 	list->setDragDropMode(reorderable ? QAbstractItemView::InternalMove : QAbstractItemView::NoDragDrop);
+	list->setRootIsDecorated(group != nullptr);
+	newFolderButton->setVisible(group != nullptr);
 	updating = false;
 
-	updateSubheader(list->count());
+	updateSubheader(sceneCount);
 	updateIndicators();
 }
 
@@ -929,13 +1212,22 @@ void SceneGroupsDock::updateIndicators()
 	const QString focusUuid = studio && !previewUuid.isEmpty() ? previewUuid : programUuid;
 
 	updating = true;
-	QListWidgetItem *focus = nullptr;
-	for (int i = 0; i < list->count(); i++) {
-		QListWidgetItem *item = list->item(i);
-		const QString uuid = item->data(RoleUuid).toString();
+	QTreeWidgetItem *focus = nullptr;
+	for (QTreeWidgetItemIterator it(list); *it; ++it) {
+		QTreeWidgetItem *item = *it;
+		if (item->data(0, RoleFolder).toBool()) {
+			bool containsLive = false;
+			for (int i = 0; i < item->childCount(); i++) {
+				if (item->child(i)->data(0, RoleUuid).toString() == programUuid)
+					containsLive = true;
+			}
+			item->setData(0, RoleLive, containsLive);
+			continue;
+		}
+		const QString uuid = item->data(0, RoleUuid).toString();
 		const bool live = uuid == programUuid;
-		item->setData(RoleLive, live);
-		item->setData(RolePreview, studio && !live && uuid == previewUuid);
+		item->setData(0, RoleLive, live);
+		item->setData(0, RolePreview, studio && !live && uuid == previewUuid);
 		if (uuid == focusUuid)
 			focus = item;
 	}
@@ -1012,37 +1304,69 @@ void SceneGroupsDock::activateScene(const QString &uuid, bool forceProgram)
 	obs_source_release(source);
 }
 
-void SceneGroupsDock::onItemClicked(QListWidgetItem *item)
+void SceneGroupsDock::onItemClicked(QTreeWidgetItem *item)
 {
 	/* Ctrl/Cmd/Shift + click builds a selection; it must not switch scenes. */
 	if (QApplication::keyboardModifiers() & (Qt::ControlModifier | Qt::ShiftModifier | Qt::MetaModifier))
 		return;
-	activateScene(item->data(RoleUuid).toString(), false);
+	if (item->data(0, RoleFolder).toBool()) {
+		item->setExpanded(!item->isExpanded()); /* the whole row opens and closes the folder */
+		return;
+	}
+	activateScene(item->data(0, RoleUuid).toString(), false);
 }
 
-void SceneGroupsDock::onItemDoubleClicked(QListWidgetItem *item)
+void SceneGroupsDock::onItemDoubleClicked(QTreeWidgetItem *item)
 {
 	/* In Studio Mode a double click sends the scene to program. */
-	if (obs_frontend_preview_program_mode_active())
-		activateScene(item->data(RoleUuid).toString(), true);
+	if (!item->data(0, RoleFolder).toBool() && obs_frontend_preview_program_mode_active())
+		activateScene(item->data(0, RoleUuid).toString(), true);
+}
+
+void SceneGroupsDock::onFolderToggled(QTreeWidgetItem *item, bool expanded)
+{
+	if (updating || !item->data(0, RoleFolder).toBool() || !searchEdit->text().trimmed().isEmpty())
+		return;
+	Group *group = currentGroup();
+	if (!group)
+		return;
+	if (Node *folder = findFolder(*group, item->data(0, RoleUuid).toString())) {
+		folder->expanded = expanded;
+		markDirty();
+	}
 }
 
 /* Inline rename (F2 or the context menu). */
-void SceneGroupsDock::onItemChanged(QListWidgetItem *item)
+void SceneGroupsDock::onItemChanged(QTreeWidgetItem *item)
 {
 	if (updating || closed)
 		return;
 
-	const QString uuid = item->data(RoleUuid).toString();
+	if (item->data(0, RoleFolder).toBool()) {
+		Group *group = currentGroup();
+		Node *folder = group ? findFolder(*group, item->data(0, RoleUuid).toString()) : nullptr;
+		const QString name = item->text(0).trimmed();
+		if (folder && !name.isEmpty()) {
+			folder->name = name;
+			markDirty();
+		} else if (folder) {
+			updating = true;
+			item->setText(0, folder->name);
+			updating = false;
+		}
+		return;
+	}
+
+	const QString uuid = item->data(0, RoleUuid).toString();
 	obs_source_t *source = obs_get_source_by_uuid(uuid.toUtf8().constData());
 	if (!source)
 		return;
 
 	const QString oldName = QString::fromUtf8(obs_source_get_name(source));
-	const QString newName = item->text().trimmed();
+	const QString newName = item->text(0).trimmed();
 	if (newName.isEmpty() || newName == oldName || nameExists(newName)) {
 		updating = true;
-		item->setText(oldName);
+		item->setText(0, oldName);
 		updating = false;
 		if (!newName.isEmpty() && newName != oldName)
 			QMessageBox::information(this, T("Scene.Rename"), T("Scene.NameTaken"));
@@ -1058,16 +1382,33 @@ void SceneGroupsDock::onOrderChanged()
 	if (!group || !searchEdit->text().trimmed().isEmpty())
 		return;
 
-	QStringList order;
-	for (int i = 0; i < list->count(); i++)
-		order.append(list->item(i)->data(RoleUuid).toString());
-	/* Keep any member that isn't on screen right now. */
-	for (const QString &uuid : group->scenes) {
-		if (!order.contains(uuid))
-			order.append(uuid);
+	/* Rebuild the group's layout from what the tree shows now. */
+	QHash<QString, Node> folders;
+	for (const Node &node : group->items) {
+		if (node.folder)
+			folders.insert(node.id, node);
 	}
-	group->scenes = order;
-	updateIndicators();
+	QList<Node> items;
+	for (int i = 0; i < list->topLevelItemCount(); i++) {
+		QTreeWidgetItem *top = list->topLevelItem(i);
+		const QString id = top->data(0, RoleUuid).toString();
+		if (top->data(0, RoleFolder).toBool()) {
+			Node folder = folders.value(id);
+			folder.folder = true;
+			folder.id = id;
+			folder.children.clear();
+			for (int j = 0; j < top->childCount(); j++)
+				folder.children.append(top->child(j)->data(0, RoleUuid).toString());
+			items.append(folder);
+		} else {
+			Node scene;
+			scene.id = id;
+			items.append(scene);
+		}
+	}
+	group->items = items;
+	/* Qt forgets the open state of moved folders: rebuild from the model. */
+	QTimer::singleShot(0, this, [this]() { rebuildList(); });
 	markDirty();
 }
 
@@ -1076,34 +1417,71 @@ void SceneGroupsDock::onContextMenu(const QPoint &pos)
 	if (closed || cleaning)
 		return;
 
-	QListWidgetItem *item = list->itemAt(pos);
+	QTreeWidgetItem *item = list->itemAt(pos);
 	QMenu menu(this);
+	Group *group = currentGroup();
 
-	if (item) {
+	if (item && item->data(0, RoleFolder).toBool()) {
+		const QString folderId = item->data(0, RoleUuid).toString();
+		QAction *rename = menu.addAction(T("Folder.Rename"));
+		connect(rename, &QAction::triggered, this, [this, item]() { list->editItem(item, 0); });
+		QAction *sceneHere = menu.addAction(T("Folder.NewSceneHere"));
+		connect(sceneHere, &QAction::triggered, this, [this, folderId]() { beginNewScene(folderId); });
+		QMenu *colors = menu.addMenu(T("Folder.Color"));
+		QAction *none = colors->addAction(T("Color.None"));
+		connect(none, &QAction::triggered, this, [this, folderId]() { setFolderColor(folderId, QString()); });
+		for (int i = 0; i < COLOR_PRESET_COUNT; i++) {
+			const QString hex = QString::fromLatin1(COLOR_PRESETS[i].hex);
+			QAction *action = colors->addAction(dotIcon(hex), T(COLOR_PRESETS[i].localeKey));
+			connect(action, &QAction::triggered, this,
+				[this, folderId, hex]() { setFolderColor(folderId, hex); });
+		}
+		menu.addSeparator();
+		QAction *removeFolder = menu.addAction(T("Folder.Delete"));
+		connect(removeFolder, &QAction::triggered, this, [this, folderId]() { deleteFolder(folderId); });
+	} else if (item) {
 		QStringList uuids = selectedUuids();
-		const QString clicked = item->data(RoleUuid).toString();
+		const QString clicked = item->data(0, RoleUuid).toString();
 		if (!uuids.contains(clicked))
 			uuids = QStringList(clicked);
 		const bool single = uuids.size() == 1;
 
 		if (single) {
 			QAction *rename = menu.addAction(T("Scene.Rename"));
-			connect(rename, &QAction::triggered, this, [this, item]() { list->editItem(item); });
+			connect(rename, &QAction::triggered, this, [this, item]() { list->editItem(item, 0); });
 			QAction *duplicate = menu.addAction(T("Scene.Duplicate"));
 			connect(duplicate, &QAction::triggered, this, [this, clicked]() { duplicateScene(clicked); });
 		}
 
+		if (group) {
+			QMenu *move = menu.addMenu(T("Folder.MoveTo"));
+			for (const Node &node : group->items) {
+				if (!node.folder)
+					continue;
+				QAction *action = move->addAction(
+					folderIcon(node.color, palette().color(QPalette::Mid)), node.name);
+				const QString folderId = node.id;
+				connect(action, &QAction::triggered, this,
+					[this, uuids, folderId]() { moveToFolder(uuids, folderId); });
+			}
+			move->addSeparator();
+			QAction *root = move->addAction(T("Folder.None"));
+			connect(root, &QAction::triggered, this, [this, uuids]() { moveToFolder(uuids, QString()); });
+			QAction *fresh = move->addAction(T("Folder.NewEllipsis"));
+			connect(fresh, &QAction::triggered, this, [this, uuids]() { newFolder(uuids); });
+		}
+
 		menu.addSection(T("Menu.ShowIn"));
-		for (const Group &group : groups) {
+		for (const Group &other : groups) {
 			bool inAll = true;
 			for (const QString &uuid : uuids) {
-				if (!group.scenes.contains(uuid))
+				if (!hasScene(other, uuid))
 					inAll = false;
 			}
-			QAction *action = menu.addAction(dotIcon(group.color), group.name);
+			QAction *action = menu.addAction(dotIcon(other.color), other.name);
 			action->setCheckable(true);
 			action->setChecked(inAll);
-			const QString groupId = group.id;
+			const QString groupId = other.id;
 			connect(action, &QAction::triggered, this,
 				[this, uuids, groupId](bool checked) { setMembership(uuids, groupId, checked); });
 		}
@@ -1117,6 +1495,10 @@ void SceneGroupsDock::onContextMenu(const QPoint &pos)
 	} else {
 		QAction *create = menu.addAction(T("Scene.New"));
 		connect(create, &QAction::triggered, this, [this]() { beginNewScene(); });
+		if (group) {
+			QAction *folder = menu.addAction(T("Folder.NewEllipsis"));
+			connect(folder, &QAction::triggered, this, [this]() { newFolder(); });
+		}
 		QAction *group = menu.addAction(T("Group.NewEllipsis"));
 		connect(group, &QAction::triggered, this, [this]() { promptNewGroup(QStringList()); });
 		menu.addSeparator();
@@ -1163,7 +1545,8 @@ void SceneGroupsDock::promptNewGroup(const QStringList &scenesToAdd)
 	const QString color = QString::fromLatin1(COLOR_PRESETS[groups.size() % COLOR_PRESET_COUNT].hex);
 	Group *group = addGroup(name, color);
 	if (!scenesToAdd.isEmpty()) {
-		group->scenes = scenesToAdd;
+		for (const QString &uuid : scenesToAdd)
+			addScene(*group, uuid);
 		rebuildList();
 	}
 }
@@ -1174,10 +1557,10 @@ void SceneGroupsDock::setMembership(const QStringList &uuids, const QString &gro
 	if (!group)
 		return;
 	for (const QString &uuid : uuids) {
-		if (member && !group->scenes.contains(uuid))
-			group->scenes.append(uuid);
-		else if (!member)
-			group->scenes.removeAll(uuid);
+		if (member)
+			addScene(*group, uuid);
+		else
+			removeScene(*group, uuid);
 	}
 	rebuildList();
 	markDirty();
@@ -1288,12 +1671,100 @@ void SceneGroupsDock::editCurrentGroup()
 }
 
 /* ------------------------------------------------------------------------- */
+/* Folders (one level, inside the active group)                              */
+
+void SceneGroupsDock::newFolder(const QStringList &scenesToMove)
+{
+	Group *group = currentGroup();
+	if (!group)
+		return;
+	bool ok = false;
+	const QString name =
+		QInputDialog::getText(this, T("Folder.New"), T("Folder.NamePrompt"), QLineEdit::Normal, QString(), &ok)
+			.trimmed();
+	group = currentGroup(); /* the dialog ran its own event loop */
+	if (!ok || name.isEmpty() || !group)
+		return;
+
+	Node folder;
+	folder.folder = true;
+	folder.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+	folder.name = name;
+	/* New folders go after the existing ones, before loose scenes. */
+	qsizetype index = 0;
+	for (qsizetype i = 0; i < group->items.size(); i++) {
+		if (group->items.at(i).folder)
+			index = i + 1;
+	}
+	group->items.insert(index, folder);
+	if (!scenesToMove.isEmpty()) {
+		moveToFolder(scenesToMove, folder.id);
+		return;
+	}
+	rebuildList();
+	markDirty();
+}
+
+void SceneGroupsDock::setFolderColor(const QString &folderId, const QString &color)
+{
+	Group *group = currentGroup();
+	Node *folder = group ? findFolder(*group, folderId) : nullptr;
+	if (!folder)
+		return;
+	folder->color = color;
+	rebuildList();
+	markDirty();
+}
+
+void SceneGroupsDock::deleteFolder(const QString &folderId)
+{
+	Group *group = currentGroup();
+	if (!group)
+		return;
+	for (qsizetype i = 0; i < group->items.size(); i++) {
+		if (group->items.at(i).folder && group->items.at(i).id == folderId) {
+			/* Only the folder goes: its scenes stay in the group, where it was. */
+			const QStringList children = group->items.at(i).children;
+			group->items.removeAt(i);
+			for (qsizetype j = 0; j < children.size(); j++) {
+				Node scene;
+				scene.id = children.at(j);
+				group->items.insert(i + j, scene);
+			}
+			break;
+		}
+	}
+	rebuildList();
+	markDirty();
+}
+
+void SceneGroupsDock::moveToFolder(const QStringList &uuids, const QString &folderId)
+{
+	Group *group = currentGroup();
+	if (!group)
+		return;
+	for (const QString &uuid : uuids) {
+		removeScene(*group, uuid);
+		addScene(*group, uuid, folderId);
+	}
+	if (Node *folder = findFolder(*group, folderId))
+		folder->expanded = true;
+	rebuildList();
+	markDirty();
+}
+
+/* ------------------------------------------------------------------------- */
 /* Scenes                                                                    */
 
-void SceneGroupsDock::beginNewScene()
+void SceneGroupsDock::beginNewScene(const QString &folderId)
 {
-	const Group *group = currentGroup();
-	newSceneHint->setText(group ? T("Scene.NewHintGroup").arg(group->name) : T("Scene.NewHint"));
+	Group *group = currentGroup();
+	newSceneFolderId = folderId;
+	const Node *folder = group ? findFolder(*group, folderId) : nullptr;
+	if (folder)
+		newSceneHint->setText(T("Scene.NewHintGroup").arg(group->name + QStringLiteral(" / ") + folder->name));
+	else
+		newSceneHint->setText(group ? T("Scene.NewHintGroup").arg(group->name) : T("Scene.NewHint"));
 	newSceneEdit->clear();
 	newSceneEdit->setVisible(true);
 	newSceneHint->setVisible(true);
@@ -1302,6 +1773,7 @@ void SceneGroupsDock::beginNewScene()
 
 void SceneGroupsDock::cancelNewScene()
 {
+	newSceneFolderId.clear();
 	newSceneEdit->setVisible(false);
 	newSceneHint->setVisible(false);
 }
@@ -1325,10 +1797,8 @@ void SceneGroupsDock::commitNewScene()
 	const QString uuid = QString::fromUtf8(obs_source_get_uuid(obs_scene_get_source(scene)));
 	obs_scene_release(scene); /* the frontend keeps its own reference */
 
-	if (Group *group = currentGroup()) {
-		if (!group->scenes.contains(uuid))
-			group->scenes.append(uuid);
-	}
+	if (Group *group = currentGroup())
+		addScene(*group, uuid, newSceneFolderId);
 	cancelNewScene();
 	markDirty();
 
@@ -1369,9 +1839,19 @@ void SceneGroupsDock::duplicateScene(const QString &uuid)
 
 	/* The copy joins the same groups, right after the original. */
 	for (Group &group : groups) {
-		const qsizetype index = group.scenes.indexOf(uuid);
-		if (index >= 0)
-			group.scenes.insert(index + 1, copyUuid);
+		for (qsizetype i = 0; i < group.items.size(); i++) {
+			Node &node = group.items[i];
+			if (node.folder) {
+				const qsizetype index = node.children.indexOf(uuid);
+				if (index >= 0)
+					node.children.insert(index + 1, copyUuid);
+			} else if (node.id == uuid) {
+				Node copy;
+				copy.id = copyUuid;
+				group.items.insert(i + 1, copy);
+				break;
+			}
+		}
 	}
 	markDirty();
 	QTimer::singleShot(150, this, [this]() { reconcile(); });

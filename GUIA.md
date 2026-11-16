@@ -2,7 +2,7 @@
 
 Plugin para OBS Studio que agrupa las escenas por modo (stream, grabación…) y permite gestionarlas desde un solo panel.
 
-> **Estado: v0.3.2.** Rediseño completo: los grupos reemplazan a las carpetas de las versiones 0.1 y 0.2. Compila en macOS (universal), Windows x64 y Ubuntu mediante GitHub Actions. Falta la prueba dentro de OBS (paso 5).
+> **Estado: v0.4.0.** Rediseño completo: los grupos reemplazan a las carpetas de las versiones 0.1 y 0.2. Compila en macOS (universal), Windows x64 y Ubuntu mediante GitHub Actions. Falta la prueba dentro de OBS (paso 5).
 
 El repositorio y el archivo del plugin conservan el nombre `ac-scene-folders` para que la actualización reemplace a la versión anterior.
 
@@ -14,7 +14,8 @@ El repositorio y el archivo del plugin conservan el nombre `ac-scene-folders` pa
 - **Nueva escena en el grupo activo**: se crea y queda dentro del grupo que estás viendo.
 - **En vivo y vista previa**: etiqueta roja "EN VIVO" y, en Modo Estudio, etiqueta ámbar "VISTA PREVIA". Clic manda a vista previa, doble clic al aire.
 - **Perfil de OBS vinculado (opcional)**: al elegir un grupo, OBS cambia a su perfil. No se aplica mientras transmites o grabas.
-- **Orden propio por grupo**: arrastra las escenas dentro de un grupo. "Todas" sigue el orden de OBS.
+- **Carpetas dentro de cada grupo**: organiza las escenas de un grupo en carpetas que se abren y cierran (un nivel, sin subcarpetas). Cada grupo tiene sus propias carpetas. Con una carpeta cerrada, un punto rojo indica que dentro está la escena en vivo.
+- **Orden propio por grupo**: arrastra escenas y carpetas. "Todas" sigue el orden de OBS y no muestra carpetas.
 - **Búsqueda** por nombre.
 - Los grupos se guardan dentro de la colección de escenas: viajan al exportarla o duplicarla.
 - Si venías de la v0.2, cada carpeta de primer nivel se convierte en un grupo.
@@ -46,8 +47,9 @@ Reinicia OBS. El panel aparece solo la primera vez; después se controla en **Pa
 2. En "Todas", selecciona escenas (Cmd/Ctrl + clic para varias), clic derecho → **Mostrar en** y marca los grupos.
 3. Cambia de grupo en el selector de arriba.
 4. **Nueva escena** la crea dentro del grupo activo.
-5. El engranaje abre los ajustes del grupo: nombre, color y perfil vinculado. Eliminar un grupo no borra sus escenas.
-6. Cuando ya trabajes cómodo aquí, puedes ocultar el panel nativo de Escenas en el menú Paneles.
+5. Carpetas: botón de carpeta del pie o clic derecho → **Nueva carpeta**. Para meter escenas, arrástralas o usa clic derecho → **Mover a carpeta**. Clic derecho en una carpeta: renombrar, nueva escena aquí, color o eliminar (las escenas se quedan en el grupo).
+6. El engranaje abre los ajustes del grupo: nombre, color y perfil vinculado. Eliminar un grupo no borra sus escenas.
+7. Cuando ya trabajes cómodo aquí, puedes ocultar el panel nativo de Escenas en el menú Paneles.
 
 ## 5. Lista de pruebas antes de publicar
 
@@ -62,6 +64,11 @@ Reinicia OBS. El panel aparece solo la primera vez; después se controla en **Pa
 - [ ] Modo Estudio: clic = vista previa, doble clic = al aire.
 - [ ] Grupo con perfil vinculado: cambia el perfil; mientras grabas muestra "perfil sin cambiar".
 - [ ] Reordenar arrastrando dentro de un grupo.
+- [ ] Carpetas: crear, renombrar (F2), color, eliminar (las escenas se conservan), abrir y cerrar con clic en la fila.
+- [ ] Arrastrar escenas dentro y fuera de carpetas; una carpeta no se puede meter dentro de otra.
+- [ ] "Mover a carpeta" con varias escenas seleccionadas.
+- [ ] Carpeta cerrada con la escena en vivo dentro: muestra el punto rojo.
+- [ ] Estado abierto o cerrado de cada carpeta se conserva al reiniciar OBS.
 - [ ] Migración desde la v0.2: las carpetas aparecen como grupos.
 
 ## 6. Publicar una versión
