@@ -1021,7 +1021,7 @@ void SceneGroupsDock::handleFrontendEvent(enum obs_frontend_event event)
 		break;
 	case OBS_FRONTEND_EVENT_PROFILE_CHANGED:
 		profileNote.clear();
-		updateSubheader(list->count());
+		rebuildList();
 		break;
 	default:
 		break;

@@ -166,7 +166,7 @@ private:
 	QString activeGroupId; /* empty = "All" */
 	QString profileNote;
 	QString newSceneFolderId;
-		/* folder that "New scene here" targets */ /* shown when a linked profile could not be applied */
+	/* folder that "New scene here" targets */ /* shown when a linked profile could not be applied */
 
 	obs_data_t *pending = nullptr; /* saved layout waiting for scenes to exist */
 	bool hasPending = false;
