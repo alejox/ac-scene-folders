@@ -25,12 +25,49 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 
 #include "scene-groups-dock.hpp"
 #include "groups-api.hpp"
+#include "ui/update_controller.hpp"
+
+#include <filesystem>
+#include <memory>
+#include <string>
 
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE(PLUGIN_NAME, "en-US")
 
 static QPointer<SceneGroupsDock> dock;
 static bool callbacksRegistered = false;
+
+/* Lets OBS finish starting, and the user see the main window, before the network check. */
+static const int UPDATE_CHECK_DELAY_MS = 8000;
+static std::unique_ptr<acsg::ui::UpdateController> updates;
+
+/* In UTF-8, as libobs returns it. Convert with u8path: on Windows a path built from a plain
+ * string assumes the system code page instead. */
+static std::string module_config_path(const char *file)
+{
+	char *path = obs_module_config_path(file);
+	const std::string result = path != nullptr ? path : "";
+	bfree(path);
+	return result;
+}
+
+static std::unique_ptr<acsg::ui::UpdateController> make_update_controller()
+{
+	acsg::update::UpdateServiceConfig config;
+	config.current_version = PLUGIN_VERSION;
+	config.staging_dir = std::filesystem::u8path(module_config_path("update"));
+	config.result_file = std::filesystem::u8path(module_config_path("update-result.txt"));
+	config.platform = acsg::update::current_update_platform();
+	const char *binary = obs_get_module_binary_path(obs_current_module());
+	if (binary != nullptr && config.platform) {
+		if (const auto root = acsg::update::install_root_from_binary(binary, *config.platform))
+			config.install_root = std::filesystem::u8path(*root);
+	}
+	if (!config.install_root)
+		obs_log(LOG_INFO, "updates can only be installed manually from %s", binary ? binary : "(unknown)");
+	return std::make_unique<acsg::ui::UpdateController>(std::move(config),
+							    std::filesystem::u8path(module_config_path("update.json")));
+}
 
 static void on_save(obs_data_t *save_data, bool saving, void *)
 {
@@ -59,6 +96,13 @@ static void on_event(enum obs_frontend_event event, void *)
 		dock->handleFrontendEvent(event);
 
 	if (event == OBS_FRONTEND_EVENT_EXIT) {
+		/* The staged update installs from here rather than from obs_module_unload: Qt and the
+		 * main loop still exist, so the installer can be launched, and OBS is certain to be
+		 * closing. The installer only starts once this process is gone. */
+		if (updates) {
+			updates->launch_staged_install();
+			updates.reset();
+		}
 		if (dock)
 			dock->shutdown();
 		remove_callbacks();
@@ -96,6 +140,9 @@ bool obs_module_load(void)
 	obs_frontend_add_save_callback(on_save, nullptr);
 	callbacksRegistered = true;
 
+	updates = make_update_controller();
+	updates->start(UPDATE_CHECK_DELAY_MS);
+
 	obs_log(LOG_INFO, "plugin loaded successfully (version %s)", PLUGIN_VERSION);
 	return true;
 }
@@ -103,5 +150,6 @@ bool obs_module_load(void)
 void obs_module_unload(void)
 {
 	remove_callbacks();
+	updates.reset();
 	obs_log(LOG_INFO, "plugin unloaded");
 }

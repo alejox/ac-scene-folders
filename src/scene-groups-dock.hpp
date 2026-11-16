@@ -30,7 +30,6 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <QWidget>
 
 class QFrame;
-class UpdateChecker;
 class QLabel;
 class QLineEdit;
 class QPushButton;
@@ -141,15 +140,9 @@ private:
 	void clearPending();
 	void showDockFirstTime();
 	void publishGroups();
-	void showUpdate(const QString &version, const QString &url);
 
 	QTabBar *tabs = nullptr;
 	QToolButton *addGroupButton = nullptr;
-	QFrame *updateBanner = nullptr;
-	QLabel *updateLabel = nullptr;
-	QString updateVersion;
-	QString updateUrl;
-	UpdateChecker *updates = nullptr;
 	QFrame *firstRun = nullptr;
 	QLabel *subLabel = nullptr;
 	QToolButton *gearButton = nullptr;

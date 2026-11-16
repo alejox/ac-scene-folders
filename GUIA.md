@@ -2,7 +2,7 @@
 
 Plugin para OBS Studio que agrupa las escenas por modo (stream, grabación…) y permite gestionarlas desde un solo panel.
 
-> **Estado: v0.4.1.** Rediseño completo: los grupos reemplazan a las carpetas de las versiones 0.1 y 0.2. Compila en macOS (universal), Windows x64 y Ubuntu mediante GitHub Actions. Falta la prueba dentro de OBS (paso 5).
+> **Estado: v0.5.0.** Rediseño completo: los grupos reemplazan a las carpetas de las versiones 0.1 y 0.2. Compila en macOS (universal), Windows x64 y Ubuntu mediante GitHub Actions. Falta la prueba dentro de OBS (paso 5).
 
 El repositorio y el archivo del plugin conservan el nombre `ac-scene-folders` para que la actualización reemplace a la versión anterior.
 
@@ -21,7 +21,7 @@ El repositorio y el archivo del plugin conservan el nombre `ac-scene-folders` pa
 - Si venías de la v0.2, cada carpeta de primer nivel se convierte en un grupo.
 - **Integración con otros plugins**: expone los grupos para que AC Global Overlay pueda mostrar un overlay solo en ciertos grupos.
 - El panel se abre solo la primera vez que se instala.
-- **Aviso de actualización**: una vez al día consulta la última release en GitHub y, si hay una versión nueva, muestra un aviso en el panel con el botón Descargar. No descarga ni instala nada por su cuenta. Se desactiva con clic derecho en un espacio vacío de la lista → "Buscar actualizaciones". En Linux no está disponible.
+- **Actualización automática** (mismo sistema que AC Goal Bar): al abrir OBS, como máximo una vez al día, busca una release nueva en GitHub. Si la hay, muestra una ventana con **Instalar al reiniciar**, **Más tarde** u **Omitir esta versión**. Al aceptar, descarga el paquete, verifica su huella SHA-256 y lo instala cuando cierras OBS; si algo falla, deja la versión anterior. También está en **Herramientas → AC Scene Groups: Buscar actualizaciones**. Solo funciona si el plugin está en la carpeta de plugins del usuario (en Mac, `~/Library/Application Support/obs-studio/plugins/`); en otra ubicación ofrece la descarga manual. En Linux no está disponible.
 - Interfaz en español e inglés.
 
 Los grupos son un filtro del panel: los atajos, el Stream Deck y el panel nativo siguen viendo todas las escenas.
@@ -94,8 +94,8 @@ Cada push a `main` compila en GitHub Actions; los binarios quedan como artefacto
 src/plugin-main.cpp         Registro del módulo, el panel y los callbacks de OBS
 src/scene-groups-dock.hpp   Clase del panel
 src/scene-groups-dock.cpp   Grupos, lista, sincronización con OBS, guardado y menús
-src/update-check.cpp        Aviso de actualización (consulta diaria a GitHub)
-src/net-get-*.{mm,cpp}      HTTPS con la red del sistema (NSURLSession, WinHTTP)
+src/updater/                Actualización automática (portada de AC Goal Bar): búsqueda, descarga,
+                            verificación e instalación al cerrar OBS; HTTPS con NSURLSession y WinHTTP
 data/locale/                Textos en-US y es-ES
 ```
 
@@ -134,7 +134,7 @@ Features
 Groups are a view: hotkeys and other tools still see every scene.
 
 Network use: once a day the plugin asks the GitHub API for the latest
-release to show an update notice. It can be turned off from the dock.
+release. Updates are only downloaded after the user accepts them.
 
 Requirements: OBS Studio 31.1 or newer. Windows and macOS.
 ```
