@@ -1,5 +1,5 @@
 /*
-AC Scene Folders
+AC Scene Groups
 Copyright (C) 2026 alejoxcode
 
 This program is free software; you can redistribute it and/or modify
@@ -23,12 +23,12 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <QMainWindow>
 #include <QPointer>
 
-#include "scene-tree-dock.hpp"
+#include "scene-groups-dock.hpp"
 
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE(PLUGIN_NAME, "en-US")
 
-static QPointer<SceneTreeDock> dock;
+static QPointer<SceneGroupsDock> dock;
 static bool callbacksRegistered = false;
 
 static void on_save(obs_data_t *save_data, bool saving, void *)
@@ -71,7 +71,7 @@ MODULE_EXPORT const char *obs_module_description(void)
 
 MODULE_EXPORT const char *obs_module_name(void)
 {
-	return "AC Scene Folders";
+	return "AC Scene Groups";
 }
 
 bool obs_module_load(void)
@@ -82,7 +82,7 @@ bool obs_module_load(void)
 		return true;
 	}
 
-	dock = new SceneTreeDock(mainWindow);
+	dock = new SceneGroupsDock(mainWindow);
 	if (!obs_frontend_add_dock_by_id("ac-scene-folders-dock", obs_module_text("DockTitle"), dock)) {
 		obs_log(LOG_ERROR, "could not register the dock");
 		delete dock;

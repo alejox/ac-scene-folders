@@ -1,6 +1,6 @@
-# AC Scene Folders
+# AC Scene Groups
 
-OBS Studio plugin that adds a dock to organize scenes into folders, with search, colors and favorites. The folder layout is stored inside the scene collection.
+OBS Studio plugin that groups scenes by mode (stream, recording…) and lets you create, rename, duplicate and delete scenes from a single dock. Groups are stored inside the scene collection.
 
 - Guía completa en español: [GUIA.md](GUIA.md)
 - Requires OBS Studio 31.1 or newer (Windows, macOS)

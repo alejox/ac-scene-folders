@@ -1,154 +1,115 @@
-# AC Scene Folders — Guía
+# AC Scene Groups — Guía
 
-Plugin para OBS Studio que agrega un panel para organizar las escenas en carpetas, con búsqueda, colores y favoritas.
+Plugin para OBS Studio que agrupa las escenas por modo (stream, grabación…) y permite gestionarlas desde un solo panel.
 
-> **Estado: v0.2.0.** Compila en macOS (universal), Windows x64 y Ubuntu mediante GitHub Actions. Falta la prueba dentro de OBS (paso 6).
+> **Estado: v0.3.0.** Rediseño completo: los grupos reemplazan a las carpetas de las versiones 0.1 y 0.2. Compila en macOS (universal), Windows x64 y Ubuntu mediante GitHub Actions. Falta la prueba dentro de OBS (paso 5).
+
+El repositorio y el archivo del plugin conservan el nombre `ac-scene-folders` para que la actualización reemplace a la versión anterior.
 
 ## 1. Qué hace
 
-- **Carpetas y subcarpetas** para las escenas, con arrastrar y soltar.
-- **Clic en toda la fila** de la carpeta para abrirla o cerrarla (no solo en la flecha).
-- **Búsqueda**: escribe y filtra; Enter salta a la primera coincidencia.
-- **Favoritas**: marca escenas con ★ y usa el botón ★ para ver solo esas.
-- **Colores por carpeta**: cian, ámbar, morado, rojo, verde y azul.
-- **Modo Estudio**: un clic manda la escena a vista previa, doble clic a programa.
-- **Indicador de en vivo**: punto rojo y fila resaltada en la escena al aire; punto hueco para la vista previa del Modo Estudio.
-- Cada carpeta muestra **cuántas escenas tiene** y el punto rojo si contiene la escena en vivo, aunque esté cerrada.
-- **Selección múltiple** con Ctrl/Cmd o Shift + clic, para arrastrar varias a la vez o usar clic derecho → **Mover a**.
-- **Ayuda inicial** con botón para crear la primera carpeta.
-- **La estructura se guarda dentro de la colección de escenas**: viaja al exportar, importar o duplicar la colección, y cada colección tiene su propio árbol.
-- Las escenas se identifican por su ID interno, así que renombrarlas no las saca de su carpeta.
+- **Selector de grupos** arriba: cada grupo muestra solo sus escenas. "Todas" muestra la lista completa.
+- **Una escena puede estar en varios grupos**; una etiqueta indica en cuántos.
+- **Gestión de escenas en el mismo panel**: crear, renombrar (F2), duplicar y eliminar. Ya no hace falta el panel nativo de Escenas.
+- **Nueva escena en el grupo activo**: se crea y queda dentro del grupo que estás viendo.
+- **En vivo y vista previa**: etiqueta roja "EN VIVO" y, en Modo Estudio, etiqueta ámbar "VISTA PREVIA". Clic manda a vista previa, doble clic al aire.
+- **Perfil de OBS vinculado (opcional)**: al elegir un grupo, OBS cambia a su perfil. No se aplica mientras transmites o grabas.
+- **Orden propio por grupo**: arrastra las escenas dentro de un grupo. "Todas" sigue el orden de OBS.
+- **Búsqueda** por nombre.
+- Los grupos se guardan dentro de la colección de escenas: viajan al exportarla o duplicarla.
+- Si venías de la v0.2, cada carpeta de primer nivel se convierte en un grupo.
+- El panel se abre solo la primera vez que se instala.
 - Interfaz en español e inglés.
 
-Las carpetas son solo organización visual: no modifican las escenas ni sus fuentes. Si desinstalas el plugin, tus escenas quedan intactas.
+Los grupos son un filtro del panel: los atajos, el Stream Deck y el panel nativo siguen viendo todas las escenas.
 
 ## 2. Requisitos
 
 | | |
 |---|---|
-| OBS Studio | 31.1 o superior (probado el diseño contra la API de OBS 32) |
-| macOS | Apple Silicon o Intel, Xcode 16 y CMake 3.30 para compilar |
-| Windows | Visual Studio 2022 y CMake 3.30 para compilar |
+| OBS Studio | 31.1 o superior |
+| macOS | Apple Silicon o Intel |
+| Windows | x64 |
 
-## 3. Compilar en Mac
+## 3. Instalar
 
-Desde la carpeta del proyecto:
+**macOS**: copia `ac-scene-folders.plugin` a `~/Library/Application Support/obs-studio/plugins/`, reemplazando el anterior si existe.
+
+**Windows**: copia el contenido del zip dentro de la carpeta de instalación de OBS.
+
+Reinicia OBS. El panel aparece solo la primera vez; después se controla en **Paneles → Grupos de escenas**.
+
+## 4. Uso
+
+1. Crea tus grupos con los botones sugeridos ("Stream", "Grabación") o con **+**.
+2. En "Todas", selecciona escenas (Cmd/Ctrl + clic para varias), clic derecho → **Mostrar en** y marca los grupos.
+3. Cambia de grupo en el selector de arriba.
+4. **Nueva escena** la crea dentro del grupo activo.
+5. El engranaje abre los ajustes del grupo: nombre, color y perfil vinculado. Eliminar un grupo no borra sus escenas.
+6. Cuando ya trabajes cómodo aquí, puedes ocultar el panel nativo de Escenas en el menú Paneles.
+
+## 5. Lista de pruebas antes de publicar
+
+- [ ] El panel se abre solo en la primera instalación.
+- [ ] Crear grupos, renombrarlos, cambiar color y eliminarlos (las escenas se conservan).
+- [ ] Añadir y quitar escenas de grupos; la etiqueta "N grupos" es correcta.
+- [ ] Crear escena desde el panel: aparece en OBS y en el grupo activo.
+- [ ] Renombrar con F2, duplicar y eliminar; nombre repetido muestra aviso.
+- [ ] Crear una escena mientras grabas no cambia la escena al aire.
+- [ ] Cerrar y abrir OBS: grupos, orden y grupo activo se conservan.
+- [ ] Cambiar de colección de escenas y volver: cada una conserva sus grupos.
+- [ ] Modo Estudio: clic = vista previa, doble clic = al aire.
+- [ ] Grupo con perfil vinculado: cambia el perfil; mientras grabas muestra "perfil sin cambiar".
+- [ ] Reordenar arrastrando dentro de un grupo.
+- [ ] Migración desde la v0.2: las carpetas aparecen como grupos.
+
+## 6. Compilar
 
 ```bash
 cmake --preset macos
 cmake --build --preset macos
 ```
 
-La primera vez descarga las dependencias de OBS y Qt, tarda unos minutos. Para trabajar en Xcode abre `build_macos/ac-scene-folders.xcodeproj`.
-
-El resultado es `ac-scene-folders.plugin` dentro de `build_macos/`.
-
-Cada push a `main` también compila en GitHub Actions; los binarios quedan como artefactos de la ejecución.
-
-## 4. Instalar
-
-**macOS** — copia `ac-scene-folders.plugin` a:
-
-```
-~/Library/Application Support/obs-studio/plugins/
-```
-
-**Windows** — copia el contenido del zip generado dentro de la carpeta de instalación de OBS (`C:\Program Files\obs-studio\`).
-
-Reinicia OBS y activa el panel en **Paneles → Carpetas de escenas** (Docks → Scene Folders).
-
-## 5. Uso
-
-1. Al abrirlo por primera vez verás todas tus escenas en la raíz.
-2. Botón **+** o clic derecho → **Nueva carpeta**.
-3. Arrastra escenas (o carpetas) dentro de una carpeta. Para mover varias: Ctrl/Cmd + clic para seleccionarlas, luego arrástralas o clic derecho → **Mover a**.
-4. Clic derecho en una carpeta: renombrar, cambiar color, crear subcarpeta o eliminarla. Eliminar una carpeta **no borra escenas**: su contenido sube un nivel.
-5. Clic derecho en una escena: agregar o quitar de favoritas.
-6. Las escenas nuevas que crees en OBS aparecen al final de la raíz.
-
-Crear, borrar y renombrar escenas se sigue haciendo en el panel normal de Escenas de OBS.
-
-## 6. Lista de pruebas antes de publicar
-
-- [ ] El panel aparece y lista todas las escenas.
-- [ ] Crear carpeta, subcarpeta, renombrar, color, eliminar.
-- [ ] Arrastrar escenas y carpetas; no se puede soltar dentro de una escena.
-- [ ] Cerrar y abrir OBS: la estructura y las carpetas abiertas/cerradas se conservan.
-- [ ] Cambiar de colección de escenas y volver: cada una conserva su árbol.
-- [ ] Exportar la colección, importarla con otro nombre: llega con carpetas.
-- [ ] Renombrar y borrar escenas desde OBS: el panel se actualiza.
-- [ ] Modo Estudio: clic = vista previa, doble clic = programa.
-- [ ] Panel acoplado a la izquierda y en pestaña junto a otro panel: no queda en blanco al reabrir.
-- [ ] Selección múltiple: arrastrar varias y "Mover a" (carpeta existente, nivel principal, carpeta nueva).
-- [ ] Punto rojo en la escena en vivo y en su carpeta cerrada; contador de escenas correcto.
-- [ ] Doble clic en una carpeta no parpadea.
-- [ ] Búsqueda y filtro de favoritas; al limpiar, las carpetas vuelven a su estado.
+Cada push a `main` compila en GitHub Actions; los binarios quedan como artefactos de la ejecución.
 
 ## 7. Cómo está hecho
 
 ```
-src/plugin-main.cpp       Registro del módulo, el panel y los callbacks de OBS
-src/scene-tree-dock.hpp   Clase del panel
-src/scene-tree-dock.cpp   Árbol, sincronización con OBS, guardado y menús
-data/locale/              Textos en-US y es-ES
-buildspec.json            Nombre, versión, bundle ID y dependencias
+src/plugin-main.cpp         Registro del módulo, el panel y los callbacks de OBS
+src/scene-groups-dock.hpp   Clase del panel
+src/scene-groups-dock.cpp   Grupos, lista, sincronización con OBS, guardado y menús
+data/locale/                Textos en-US y es-ES
 ```
 
-- El panel es un `QTreeWidget` registrado con `obs_frontend_add_dock_by_id`.
-- Se sincroniza con los eventos de OBS (lista de escenas, escena actual, cambio de colección) y con la señal de renombrado.
-- Guarda con `obs_frontend_add_save_callback`, bajo la clave `ac-scene-folders` del archivo de la colección.
+Guarda con `obs_frontend_add_save_callback`, bajo la clave `ac-scene-groups` del archivo de la colección.
 
-## 8. Firma y notarización en Mac
+## 8. Firma en Mac
 
-Sin firma, macOS bloquea el plugin y el usuario tiene que usar la Terminal. Para evitarlo necesitas una cuenta de Apple Developer:
+El plugin va sin firmar con Apple Developer, así que macOS puede bloquearlo la primera vez (Ajustes del Sistema → Privacidad y seguridad). Para firmarlo y notarizarlo: https://github.com/obsproject/obs-plugintemplate/wiki/Codesigning-On-macOS
 
-1. Certificado **Developer ID Application** (y **Developer ID Installer** para el .pkg).
-2. Exporta `CODESIGN_IDENT` y `CODESIGN_TEAM` antes de compilar, o configura los secretos del repositorio para que GitHub Actions firme y notarice (el flujo ya viene en `.github/`).
-3. Detalle oficial: https://github.com/obsproject/obs-plugintemplate/wiki/Codesigning-On-macOS
+## 9. Ficha para los foros de OBS
 
-Este es el punto que más te diferencia de la alternativa actual, que se distribuye sin firmar.
+**Título:** AC Scene Groups
 
-## 9. Publicar en los foros de OBS
-
-1. Sube el código a GitHub (`alejox/ac-scene-folders`) y crea un release `0.1.0` con los instaladores.
-2. En obsproject.com/forum → Resources → **Add resource** → categoría OBS Studio Plugins, con tu cuenta alejoxcode.
-3. Ficha lista para pegar:
-
-**Título:** AC Scene Folders
-
-**Tagline:** Organize your scenes into folders, with search, colors and favorites.
-
-**Descripción:**
+**Tagline:** Group your scenes by mode and manage them from a single dock.
 
 ```
-AC Scene Folders adds a dock that lets you organize your scenes into folders.
+AC Scene Groups adds a dock that groups your scenes by mode: streaming,
+recording, or anything else.
 
 Features
-• Folders and subfolders with drag & drop
-• Click anywhere on a folder row to open or close it
-• Quick search — press Enter to jump to the first match
-• Favorites and a favorites-only view
-• Folder colors
-• Studio Mode aware: click = preview, double click = program
-• The folder layout is stored inside the scene collection, so it
-  survives export, import and duplicate
+• Group selector: each group shows only its scenes
+• A scene can live in several groups
+• Create, rename, duplicate and delete scenes from the dock
+• Optional: link a group to an OBS profile
+• LIVE and PREVIEW badges, Studio Mode aware
+• Per-group scene order, quick search
+• Groups are stored inside the scene collection
 • English and Spanish
 
-Folders are purely visual: your scenes and sources are never modified.
+Groups are a view: hotkeys and other tools still see every scene.
 
 Requirements: OBS Studio 31.1 or newer. Windows and macOS.
-
-Source code and bug reports: https://github.com/alejox/ac-scene-folders
-More plugins: https://www.alejoxcode.com/plugins
 ```
 
-**Campos:** Minimum OBS Studio Version 31.1.0 · Platforms: Windows, macOS · Source Code URL: el repositorio · Licencia GPL-2.0.
-
 Los foros piden declarar el uso de IA en el desarrollo: inclúyelo en la descripción.
-
-## 10. Siguientes pasos
-
-- Miniatura de la escena al pasar el cursor.
-- Exponer las carpetas a Speed Deck: cada carpeta como una página de botones.
-- Íconos por carpeta.
-- Instalador .pkg firmado y build para Linux.
