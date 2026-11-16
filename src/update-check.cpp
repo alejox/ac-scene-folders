@@ -109,7 +109,7 @@ void UpdateChecker::announceIfNewer()
 {
 	if (!enabled || latest.isEmpty() || latestUrl.isEmpty())
 		return;
-	if (compareVersions(latest, QStringLiteral(PLUGIN_VERSION)) <= 0)
+	if (compareVersions(latest, QString::fromUtf8(PLUGIN_VERSION)) <= 0)
 		return;
 	if (!dismissed.isEmpty() && compareVersions(latest, dismissed) <= 0)
 		return;

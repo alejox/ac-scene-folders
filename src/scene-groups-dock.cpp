@@ -813,7 +813,7 @@ void SceneGroupsDock::showUpdate(const QString &version, const QString &url)
 {
 	updateVersion = version;
 	updateUrl = url;
-	updateLabel->setText(T("Update.Available").arg(version, QStringLiteral(PLUGIN_VERSION)));
+	updateLabel->setText(T("Update.Available").arg(version, QString::fromUtf8(PLUGIN_VERSION)));
 	updateBanner->setVisible(true);
 }
 
