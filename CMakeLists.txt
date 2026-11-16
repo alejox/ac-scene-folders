@@ -40,6 +40,8 @@ target_sources(
     src/plugin-main.cpp
     src/scene-groups-dock.cpp
     src/scene-groups-dock.hpp
+    src/groups-api.cpp
+    src/groups-api.hpp
     src/update-check.cpp
     src/update-check.hpp
     src/net-get.hpp

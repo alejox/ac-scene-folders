@@ -24,6 +24,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <QPointer>
 
 #include "scene-groups-dock.hpp"
+#include "groups-api.hpp"
 
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE(PLUGIN_NAME, "en-US")
@@ -76,6 +77,8 @@ MODULE_EXPORT const char *obs_module_name(void)
 
 bool obs_module_load(void)
 {
+	groups_api_register();
+
 	auto *mainWindow = static_cast<QMainWindow *>(obs_frontend_get_main_window());
 	if (!mainWindow) {
 		obs_log(LOG_WARNING, "no main window, dock not created");

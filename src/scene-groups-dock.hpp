@@ -140,6 +140,7 @@ private:
 	bool tryApplyPending();
 	void clearPending();
 	void showDockFirstTime();
+	void publishGroups();
 	void showUpdate(const QString &version, const QString &url);
 
 	QTabBar *tabs = nullptr;

@@ -2,7 +2,7 @@
 
 Plugin para OBS Studio que agrupa las escenas por modo (stream, grabación…) y permite gestionarlas desde un solo panel.
 
-> **Estado: v0.4.0.** Rediseño completo: los grupos reemplazan a las carpetas de las versiones 0.1 y 0.2. Compila en macOS (universal), Windows x64 y Ubuntu mediante GitHub Actions. Falta la prueba dentro de OBS (paso 5).
+> **Estado: v0.4.1.** Rediseño completo: los grupos reemplazan a las carpetas de las versiones 0.1 y 0.2. Compila en macOS (universal), Windows x64 y Ubuntu mediante GitHub Actions. Falta la prueba dentro de OBS (paso 5).
 
 El repositorio y el archivo del plugin conservan el nombre `ac-scene-folders` para que la actualización reemplace a la versión anterior.
 
@@ -19,6 +19,7 @@ El repositorio y el archivo del plugin conservan el nombre `ac-scene-folders` pa
 - **Búsqueda** por nombre.
 - Los grupos se guardan dentro de la colección de escenas: viajan al exportarla o duplicarla.
 - Si venías de la v0.2, cada carpeta de primer nivel se convierte en un grupo.
+- **Integración con otros plugins**: expone los grupos para que AC Global Overlay pueda mostrar un overlay solo en ciertos grupos.
 - El panel se abre solo la primera vez que se instala.
 - **Aviso de actualización**: una vez al día consulta la última release en GitHub y, si hay una versión nueva, muestra un aviso en el panel con el botón Descargar. No descarga ni instala nada por su cuenta. Se desactiva con clic derecho en un espacio vacío de la lista → "Buscar actualizaciones". En Linux no está disponible.
 - Interfaz en español e inglés.
@@ -98,6 +99,12 @@ src/update-check.cpp        Aviso de actualización (consulta diaria a GitHub)
 src/net-get-*.{mm,cpp}      HTTPS con la red del sistema (NSURLSession, WinHTTP)
 data/locale/                Textos en-US y es-ES
 ```
+
+### API para otros plugins
+
+- Procedimiento `void ac_scene_groups_get(out string json)` en `obs_get_proc_handler()`.
+- Señal `void ac_scene_groups_changed()` en `obs_get_signal_handler()`, cuando cambian los grupos, sus escenas o la colección.
+- JSON: `{"version":1,"groups":[{"id","name","color","scenes":[uuids]}]}`; `scenes` incluye las escenas dentro de carpetas.
 
 Guarda con `obs_frontend_add_save_callback`, bajo la clave `ac-scene-groups` del archivo de la colección.
 

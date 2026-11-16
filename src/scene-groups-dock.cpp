@@ -18,6 +18,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 
 #include "scene-groups-dock.hpp"
 #include "update-check.hpp"
+#include "groups-api.hpp"
 
 #include <obs-module.h>
 #include <plugin-support.h>
@@ -37,6 +38,9 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <QFont>
 #include <QFontMetrics>
 #include <QFormLayout>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QIcon>
@@ -686,6 +690,7 @@ void SceneGroupsDock::markDirty()
 {
 	if (closed || cleaning)
 		return;
+	publishGroups();
 	saveTimer->start();
 }
 
@@ -995,6 +1000,7 @@ void SceneGroupsDock::handleFrontendEvent(enum obs_frontend_event event)
 		updating = true;
 		list->clear();
 		updating = false;
+		publishGroups();
 		break;
 	case OBS_FRONTEND_EVENT_FINISHED_LOADING:
 		cleaning = false;
@@ -1189,6 +1195,29 @@ void SceneGroupsDock::rebuildList()
 
 	updateSubheader(sceneCount);
 	updateIndicators();
+	publishGroups();
+}
+
+void SceneGroupsDock::publishGroups()
+{
+	QJsonArray groupArray;
+	if (!cleaning) {
+		for (const Group &group : groups) {
+			QJsonArray scenes;
+			for (const QString &uuid : members(group))
+				scenes.append(uuid);
+			QJsonObject entry;
+			entry.insert(QStringLiteral("id"), group.id);
+			entry.insert(QStringLiteral("name"), group.name);
+			entry.insert(QStringLiteral("color"), group.color);
+			entry.insert(QStringLiteral("scenes"), scenes);
+			groupArray.append(entry);
+		}
+	}
+	QJsonObject root;
+	root.insert(QStringLiteral("version"), 1);
+	root.insert(QStringLiteral("groups"), groupArray);
+	groups_api_publish(QJsonDocument(root).toJson(QJsonDocument::Compact).toStdString());
 }
 
 void SceneGroupsDock::updateIndicators()
