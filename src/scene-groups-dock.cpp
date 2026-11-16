@@ -17,6 +17,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 */
 
 #include "scene-groups-dock.hpp"
+#include "update-check.hpp"
 
 #include <obs-module.h>
 #include <plugin-support.h>
@@ -28,6 +29,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <QColor>
 #include <QComboBox>
 #include <QDialog>
+#include <QDesktopServices>
 #include <QDialogButtonBox>
 #include <QDockWidget>
 #include <QDropEvent>
@@ -54,6 +56,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <QTabBar>
 #include <QTimer>
 #include <QToolButton>
+#include <QUrl>
 #include <QUuid>
 #include <QVBoxLayout>
 
@@ -242,6 +245,38 @@ SceneGroupsDock::SceneGroupsDock(QWidget *parent) : QWidget(parent)
 	selector->addWidget(tabs, 1);
 	selector->addWidget(addGroupButton);
 
+	/* Update notice */
+	updateBanner = new QFrame(this);
+	updateBanner->setFrameShape(QFrame::StyledPanel);
+	updateLabel = new QLabel(updateBanner);
+	updateLabel->setWordWrap(true);
+	auto *updateGet = new QPushButton(T("Update.Download"), updateBanner);
+	auto *updateSkip = new QPushButton(T("Update.Skip"), updateBanner);
+	updateSkip->setFlat(true);
+	auto *updateButtons = new QHBoxLayout();
+	updateButtons->setSpacing(6);
+	updateButtons->addWidget(updateGet);
+	updateButtons->addWidget(updateSkip);
+	updateButtons->addStretch(1);
+	auto *updateLayout = new QVBoxLayout(updateBanner);
+	updateLayout->setContentsMargins(10, 8, 10, 8);
+	updateLayout->setSpacing(6);
+	updateLayout->addWidget(updateLabel);
+	updateLayout->addLayout(updateButtons);
+	updateBanner->setVisible(false);
+
+	updates = new UpdateChecker(this);
+	connect(updates, &UpdateChecker::updateAvailable, this,
+		[this](const QString &version, const QString &url) { showUpdate(version, url); });
+	connect(updateGet, &QPushButton::clicked, this, [this]() {
+		if (!updateUrl.isEmpty())
+			QDesktopServices::openUrl(QUrl(updateUrl));
+	});
+	connect(updateSkip, &QPushButton::clicked, this, [this]() {
+		updates->dismiss(updateVersion);
+		updateBanner->setVisible(false);
+	});
+
 	/* First run card */
 	firstRun = new QFrame(this);
 	firstRun->setFrameShape(QFrame::StyledPanel);
@@ -330,6 +365,7 @@ SceneGroupsDock::SceneGroupsDock(QWidget *parent) : QWidget(parent)
 	mainLayout->setContentsMargins(4, 4, 4, 4);
 	mainLayout->setSpacing(4);
 	mainLayout->addLayout(selector);
+	mainLayout->addWidget(updateBanner);
 	mainLayout->addWidget(firstRun);
 	mainLayout->addLayout(sub);
 	mainLayout->addWidget(searchEdit);
@@ -399,6 +435,7 @@ void SceneGroupsDock::shutdown()
 		return;
 	closed = true;
 	saveTimer->stop();
+	updates->stop();
 	signal_handler_disconnect(obs_get_signal_handler(), "source_rename", source_renamed, this);
 	clearPending();
 }
@@ -723,6 +760,10 @@ void SceneGroupsDock::handleFrontendEvent(enum obs_frontend_event event)
 		cleaning = false;
 		reconcile();
 		showDockFirstTime();
+		QTimer::singleShot(8000, this, [this]() {
+			if (!closed)
+				updates->start();
+		});
 		break;
 	case OBS_FRONTEND_EVENT_SCENE_COLLECTION_CHANGED:
 		cleaning = false;
@@ -766,6 +807,14 @@ void SceneGroupsDock::showDockFirstTime()
 			file.close();
 	}
 	bfree(marker);
+}
+
+void SceneGroupsDock::showUpdate(const QString &version, const QString &url)
+{
+	updateVersion = version;
+	updateUrl = url;
+	updateLabel->setText(T("Update.Available").arg(version, QStringLiteral(PLUGIN_VERSION)));
+	updateBanner->setVisible(true);
 }
 
 /* ------------------------------------------------------------------------- */
@@ -1070,6 +1119,15 @@ void SceneGroupsDock::onContextMenu(const QPoint &pos)
 		connect(create, &QAction::triggered, this, [this]() { beginNewScene(); });
 		QAction *group = menu.addAction(T("Group.NewEllipsis"));
 		connect(group, &QAction::triggered, this, [this]() { promptNewGroup(QStringList()); });
+		menu.addSeparator();
+		QAction *check = menu.addAction(T("Update.Toggle"));
+		check->setCheckable(true);
+		check->setChecked(updates->isEnabled());
+		connect(check, &QAction::toggled, this, [this](bool on) {
+			updates->setEnabled(on);
+			if (!on)
+				updateBanner->setVisible(false);
+		});
 	}
 
 	menu.exec(list->viewport()->mapToGlobal(pos));

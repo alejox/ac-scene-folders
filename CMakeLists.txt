@@ -34,6 +34,28 @@ if(ENABLE_QT)
   )
 endif()
 
-target_sources(${CMAKE_PROJECT_NAME} PRIVATE src/plugin-main.cpp src/scene-groups-dock.cpp src/scene-groups-dock.hpp)
+target_sources(
+  ${CMAKE_PROJECT_NAME}
+  PRIVATE
+    src/plugin-main.cpp
+    src/scene-groups-dock.cpp
+    src/scene-groups-dock.hpp
+    src/update-check.cpp
+    src/update-check.hpp
+    src/net-get.hpp
+)
+
+# Update check over HTTPS with the system network stack: OBS doesn't ship Qt's TLS plugins.
+if(OS_WINDOWS)
+  target_sources(${CMAKE_PROJECT_NAME} PRIVATE src/net-get-win.cpp)
+  target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE winhttp)
+elseif(OS_MACOS)
+  enable_language(OBJCXX)
+  target_sources(${CMAKE_PROJECT_NAME} PRIVATE src/net-get-mac.mm)
+  set_source_files_properties(src/net-get-mac.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+  target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE "$<LINK_LIBRARY:FRAMEWORK,Foundation.framework>")
+else()
+  target_sources(${CMAKE_PROJECT_NAME} PRIVATE src/net-get-stub.cpp)
+endif()
 
 set_target_properties_plugin(${CMAKE_PROJECT_NAME} PROPERTIES OUTPUT_NAME ${_name})

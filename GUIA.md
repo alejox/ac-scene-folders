@@ -2,7 +2,7 @@
 
 Plugin para OBS Studio que agrupa las escenas por modo (stream, grabación…) y permite gestionarlas desde un solo panel.
 
-> **Estado: v0.3.0.** Rediseño completo: los grupos reemplazan a las carpetas de las versiones 0.1 y 0.2. Compila en macOS (universal), Windows x64 y Ubuntu mediante GitHub Actions. Falta la prueba dentro de OBS (paso 5).
+> **Estado: v0.3.2.** Rediseño completo: los grupos reemplazan a las carpetas de las versiones 0.1 y 0.2. Compila en macOS (universal), Windows x64 y Ubuntu mediante GitHub Actions. Falta la prueba dentro de OBS (paso 5).
 
 El repositorio y el archivo del plugin conservan el nombre `ac-scene-folders` para que la actualización reemplace a la versión anterior.
 
@@ -19,6 +19,7 @@ El repositorio y el archivo del plugin conservan el nombre `ac-scene-folders` pa
 - Los grupos se guardan dentro de la colección de escenas: viajan al exportarla o duplicarla.
 - Si venías de la v0.2, cada carpeta de primer nivel se convierte en un grupo.
 - El panel se abre solo la primera vez que se instala.
+- **Aviso de actualización**: una vez al día consulta la última release en GitHub y, si hay una versión nueva, muestra un aviso en el panel con el botón Descargar. No descarga ni instala nada por su cuenta. Se desactiva con clic derecho en un espacio vacío de la lista → "Buscar actualizaciones". En Linux no está disponible.
 - Interfaz en español e inglés.
 
 Los grupos son un filtro del panel: los atajos, el Stream Deck y el panel nativo siguen viendo todas las escenas.
@@ -63,7 +64,15 @@ Reinicia OBS. El panel aparece solo la primera vez; después se controla en **Pa
 - [ ] Reordenar arrastrando dentro de un grupo.
 - [ ] Migración desde la v0.2: las carpetas aparecen como grupos.
 
-## 6. Compilar
+## 6. Publicar una versión
+
+1. Sube el número en `buildspec.json` (`"version"`) y haz push a `main`.
+2. En GitHub: Releases → Create a new release → etiqueta **con el mismo número** → Create new tag on publish → Publish.
+3. La compilación adjunta los archivos a la release.
+
+Si la etiqueta y `buildspec.json` no coinciden, el plugin informa una versión distinta a la de la release y el aviso de actualización falla.
+
+## 7. Compilar
 
 ```bash
 cmake --preset macos
@@ -72,22 +81,24 @@ cmake --build --preset macos
 
 Cada push a `main` compila en GitHub Actions; los binarios quedan como artefactos de la ejecución.
 
-## 7. Cómo está hecho
+## 8. Cómo está hecho
 
 ```
 src/plugin-main.cpp         Registro del módulo, el panel y los callbacks de OBS
 src/scene-groups-dock.hpp   Clase del panel
 src/scene-groups-dock.cpp   Grupos, lista, sincronización con OBS, guardado y menús
+src/update-check.cpp        Aviso de actualización (consulta diaria a GitHub)
+src/net-get-*.{mm,cpp}      HTTPS con la red del sistema (NSURLSession, WinHTTP)
 data/locale/                Textos en-US y es-ES
 ```
 
 Guarda con `obs_frontend_add_save_callback`, bajo la clave `ac-scene-groups` del archivo de la colección.
 
-## 8. Firma en Mac
+## 9. Firma en Mac
 
 El plugin va sin firmar con Apple Developer, así que macOS puede bloquearlo la primera vez (Ajustes del Sistema → Privacidad y seguridad). Para firmarlo y notarizarlo: https://github.com/obsproject/obs-plugintemplate/wiki/Codesigning-On-macOS
 
-## 9. Ficha para los foros de OBS
+## 10. Ficha para los foros de OBS
 
 **Título:** AC Scene Groups
 
@@ -108,6 +119,9 @@ Features
 • English and Spanish
 
 Groups are a view: hotkeys and other tools still see every scene.
+
+Network use: once a day the plugin asks the GitHub API for the latest
+release to show an update notice. It can be turned off from the dock.
 
 Requirements: OBS Studio 31.1 or newer. Windows and macOS.
 ```
